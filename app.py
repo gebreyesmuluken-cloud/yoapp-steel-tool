@@ -71,8 +71,23 @@ def get_profile_type(profile_name):
         return "U Profile"
     elif profile_name.startswith(("R", "CHS")):
         return "CHS Profile"
+    elif profile_name.startswith("PL"):
+        return "PL Profile"
     else:
         return "Other"
+
+
+def get_weight_factor(profile_name):
+    p = str(profile_name).strip().upper()
+
+    if p.startswith(("HEA", "HEB", "HEM", "IPE", "IPN", "UPN")):
+        return 1.15
+    elif p.startswith(("K", "L", "R")):
+        return 1.20
+    elif p.startswith("PL"):
+        return 1.40
+    else:
+        return 1.00
 
 
 def load_profiles():
@@ -127,7 +142,8 @@ def calculate_row(row_data, profile_df):
         "Split Pieces": 1,
         "kg/m": 0.0,
         "Total Treatment Area": 0.0,
-        "Total Weight": 0.0,
+        "Net Weight": 0.0,
+        "Weight Incl. Waste": 0.0,
         "Total ZBSL": 0.0,
         "Total Levering Price": 0.0,
     }
@@ -156,10 +172,13 @@ def calculate_row(row_data, profile_df):
     m2_per_m = to_float(profile_row.get("m2_per_m", 0))
     zbsl = get_zbsl(profile_row, calc_length)
 
-    total_weight = kgm * calc_length * calc_number
+    net_weight = kgm * calc_length * calc_number
+    factor = get_weight_factor(profile_name)
+    weight_incl_waste = net_weight * factor
+
     total_treatment_area = m2_per_m * calc_length * calc_number
     total_zbsl = zbsl * calc_number
-    total_price = (total_weight / 1000) * price_per_ton
+    total_price = (weight_incl_waste / 1000) * price_per_ton
 
     row_data["Length"] = round(calc_length, 2)
     row_data["Number"] = int(calc_number) if float(calc_number).is_integer() else round(calc_number, 2)
@@ -167,7 +186,8 @@ def calculate_row(row_data, profile_df):
     row_data["Price/t"] = round(price_per_ton, 2)
     row_data["kg/m"] = round(kgm, 2)
     row_data["Total Treatment Area"] = round(total_treatment_area, 2)
-    row_data["Total Weight"] = round(total_weight, 2)
+    row_data["Net Weight"] = round(net_weight, 2)
+    row_data["Weight Incl. Waste"] = round(weight_incl_waste, 2)
     row_data["Total ZBSL"] = round(total_zbsl, 2)
     row_data["Total Levering Price"] = round(total_price, 2)
 
@@ -279,7 +299,8 @@ current_data = {
     "Split Pieces": 1,
     "kg/m": 0.0,
     "Total Treatment Area": 0.0,
-    "Total Weight": 0.0,
+    "Net Weight": 0.0,
+    "Weight Incl. Waste": 0.0,
     "Total ZBSL": 0.0,
     "Total Levering Price": 0.0
 }
@@ -315,7 +336,8 @@ if st.session_state.rows:
     expected_columns = [
         "Project Name", "BOQ Article", "Floor Level", "Sub Article", "Profile",
         "Length", "Number", "Price/t", "Split Pieces", "kg/m",
-        "Total Treatment Area", "Total Weight", "Total ZBSL", "Total Levering Price"
+        "Total Treatment Area", "Net Weight", "Weight Incl. Waste",
+        "Total ZBSL", "Total Levering Price"
     ]
 
     for col in expected_columns:
@@ -342,7 +364,8 @@ if st.session_state.rows:
             "Split Pieces": st.column_config.NumberColumn("Split Pieces", disabled=True),
             "kg/m": st.column_config.NumberColumn("kg/m", disabled=True, format="%.2f"),
             "Total Treatment Area": st.column_config.NumberColumn("Total Treatment Area", disabled=True, format="%.2f"),
-            "Total Weight": st.column_config.NumberColumn("Total Weight", disabled=True, format="%.2f"),
+            "Net Weight": st.column_config.NumberColumn("Net Weight", disabled=True, format="%.2f"),
+            "Weight Incl. Waste": st.column_config.NumberColumn("Weight Incl. Waste", disabled=True, format="%.2f"),
             "Total ZBSL": st.column_config.NumberColumn("Total ZBSL", disabled=True, format="%.2f"),
             "Total Levering Price": st.column_config.NumberColumn("Total Levering Price", disabled=True, format="%.2f"),
         }
@@ -363,19 +386,20 @@ if st.session_state.rows:
     st.subheader("Summary by Floor")
     summary_df = recalculated_df.groupby(
         ["Floor Level", "Sub Article"], as_index=False
-    )[["Number", "Total Treatment Area", "Total Weight", "Total ZBSL", "Total Levering Price"]].sum()
+    )[["Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
     st.subheader("Profile Sum")
     profile_summary_df = recalculated_df.groupby("Profile", as_index=False).agg({
         "Length": "sum",
         "Number": "sum",
-        "Total Weight": "sum"
+        "Weight Incl. Waste": "sum"
     })
 
     profile_summary_df = profile_summary_df.rename(columns={
         "Length": "Total Length",
-        "Number": "Total Number"
+        "Number": "Total Number",
+        "Weight Incl. Waste": "Total Weight"
     })
 
     st.dataframe(profile_summary_df, use_container_width=True, hide_index=True)
@@ -430,7 +454,11 @@ if st.session_state.rows:
         st.dataframe(fab_waste_df, use_container_width=True, hide_index=True)
 
         total_waste_weight = round(fab_waste_df["Waste Weight"].sum(), 2)
-        st.metric("Total Waste Weight", total_waste_weight)
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c5:
+            st.markdown(f"Total: {total_waste_weight}")
+
     else:
         fab_waste_df = pd.DataFrame(columns=["Profile", "Fab Length", "Fab Qty", "Waste Length", "Waste Weight"])
         total_waste_weight = 0.0
