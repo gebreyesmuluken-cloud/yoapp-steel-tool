@@ -3,14 +3,31 @@ import pandas as pd
 import io
 import os
 import math
+import re
+from pathlib import Path
 
 st.set_page_config(page_title="Steel Calculation App", layout="wide")
 st.title("Steel Calculation App")
 
-RESULTS_FILE = "results.xlsx"
+PROJECTS_DIR = Path("projects")
+PROJECTS_DIR.mkdir(exist_ok=True)
+
 PROFILES_FILE = "Profiles.xlsx"
-FABRIC_FILE = "fabric_standards.xlsx"
 MAX_PIECE_LENGTH = 23.0
+
+
+def safe_project_name(name):
+    name = str(name).strip()
+    name = re.sub(r"[^A-Za-z0-9_-]+", "_", name)
+    return name if name else "default_project"
+
+
+def get_project_results_file(project_name):
+    return PROJECTS_DIR / f"{safe_project_name(project_name)}_results.xlsx"
+
+
+def get_project_fabric_file(project_name):
+    return PROJECTS_DIR / f"{safe_project_name(project_name)}_fabric.xlsx"
 
 
 def to_float(value, default=0.0):
@@ -109,9 +126,14 @@ def load_profiles():
     return df
 
 
-def load_fabric_standards():
-    if os.path.exists(FABRIC_FILE):
-        df = pd.read_excel(FABRIC_FILE).fillna("")
+def load_fabric_standards(project_name):
+    if not project_name:
+        return pd.DataFrame(columns=["Supply", "Profile Type", "Fabric Standard Length"])
+
+    fabric_file = get_project_fabric_file(project_name)
+
+    if fabric_file.exists():
+        df = pd.read_excel(fabric_file).fillna("")
         expected_cols = ["Supply", "Profile Type", "Fabric Standard Length"]
         for col in expected_cols:
             if col not in df.columns:
@@ -121,8 +143,11 @@ def load_fabric_standards():
     return pd.DataFrame(columns=["Supply", "Profile Type", "Fabric Standard Length"])
 
 
-def save_fabric_standards(df):
-    df.to_excel(FABRIC_FILE, index=False)
+def save_fabric_standards(df, project_name):
+    if not project_name:
+        return
+    fabric_file = get_project_fabric_file(project_name)
+    df.to_excel(fabric_file, index=False)
 
 
 def get_fabric_row(profile_type, supply_name, fabric_df):
@@ -194,13 +219,19 @@ def calculate_row(row_data, profile_df):
     return row_data
 
 
-def save_results(rows):
-    pd.DataFrame(rows).to_excel(RESULTS_FILE, index=False)
+def save_results(rows, project_name):
+    if not project_name:
+        return
+    results_file = get_project_results_file(project_name)
+    pd.DataFrame(rows).to_excel(results_file, index=False)
 
 
-def load_saved_results():
-    if os.path.exists(RESULTS_FILE):
-        saved_df = pd.read_excel(RESULTS_FILE).fillna("")
+def load_saved_results(project_name):
+    if not project_name:
+        return []
+    results_file = get_project_results_file(project_name)
+    if results_file.exists():
+        saved_df = pd.read_excel(results_file).fillna("")
         return saved_df.to_dict("records")
     return []
 
@@ -214,21 +245,35 @@ profile_type_options = sorted(df["Profile Type"].dropna().astype(str).unique().t
 floor_options = ["Ground Floor", "First Floor", "Second Floor", "Third Floor", "Fourth Floor"]
 sub_article_options = ["Beam", "Column", "Brace", "Plate", "Connection"]
 
+if "active_project" not in st.session_state:
+    st.session_state.active_project = ""
+
 if "rows" not in st.session_state:
-    st.session_state.rows = load_saved_results()
+    st.session_state.rows = []
 
-st.subheader("Project Information")
-col1, col2 = st.columns(2)
+st.subheader("Project")
 
-with col1:
+existing_projects = sorted([
+    p.name.replace("_results.xlsx", "")
+    for p in PROJECTS_DIR.glob("*_results.xlsx")
+])
+
+project_mode = st.radio("Mode", ["New Project", "Open Project"], horizontal=True)
+
+if project_mode == "New Project":
     project = st.text_input("Project Name")
+else:
+    project = st.selectbox("Select Project", existing_projects) if existing_projects else ""
 
-with col2:
-    boq = st.text_input("BOQ Article")
+if project and project != st.session_state.active_project:
+    st.session_state.active_project = project
+    st.session_state.rows = load_saved_results(project)
+
+boq = st.text_input("BOQ Article")
 
 st.subheader("Fab Setup")
 
-fabric_df = load_fabric_standards()
+fabric_df = load_fabric_standards(project)
 
 fc1, fc2, fc3 = st.columns(3)
 
@@ -242,7 +287,9 @@ with fc3:
     fabric_standard_length_input = st.number_input("Fab Length", min_value=0.0, step=0.5)
 
 if st.button("Add Fab"):
-    if supply_name_input == "":
+    if not project:
+        st.warning("Enter or select a project first.")
+    elif supply_name_input == "":
         st.warning("Please enter a Supply name.")
     else:
         new_row = pd.DataFrame([{
@@ -259,9 +306,9 @@ if st.button("Add Fab"):
         ]
 
         fabric_df = pd.concat([fabric_df, new_row], ignore_index=True)
-        save_fabric_standards(fabric_df)
+        save_fabric_standards(fabric_df, project)
         st.success("Fab data saved.")
-        fabric_df = load_fabric_standards()
+        fabric_df = load_fabric_standards(project)
 
 if not fabric_df.empty:
     st.dataframe(fabric_df, use_container_width=True, hide_index=True)
@@ -317,16 +364,21 @@ col_btn1, col_btn2 = st.columns(2)
 
 with col_btn1:
     if st.button("Add"):
-        st.session_state.rows.append(current_data.copy())
-        save_results(st.session_state.rows)
-        st.success("Row added and saved.")
+        if not project:
+            st.warning("Enter or select a project first.")
+        else:
+            st.session_state.rows.append(current_data.copy())
+            save_results(st.session_state.rows, project)
+            st.success("Row added and saved.")
 
 with col_btn2:
-    if st.button("Clear All Rows"):
+    if st.button("Clear Project Rows"):
         st.session_state.rows = []
-        if os.path.exists(RESULTS_FILE):
-            os.remove(RESULTS_FILE)
-        st.success("All rows cleared.")
+        if project:
+            results_file = get_project_results_file(project)
+            if results_file.exists():
+                results_file.unlink()
+        st.success("Project rows cleared.")
 
 st.subheader("Detail Results")
 
@@ -379,7 +431,9 @@ if st.session_state.rows:
 
     recalculated_df = pd.DataFrame(recalculated_rows).fillna(0)
     st.session_state.rows = recalculated_df.to_dict("records")
-    save_results(st.session_state.rows)
+
+    if project:
+        save_results(st.session_state.rows, project)
 
     st.dataframe(recalculated_df, use_container_width=True, hide_index=True)
 
@@ -406,7 +460,7 @@ if st.session_state.rows:
 
     st.subheader("Fab Waste")
 
-    fabric_df = load_fabric_standards()
+    fabric_df = load_fabric_standards(project)
     supply_options = sorted(fabric_df["Supply"].dropna().astype(str).str.strip().unique().tolist())
 
     if supply_options:
@@ -488,7 +542,7 @@ if st.session_state.rows:
     st.download_button(
         label="Export to Excel",
         data=output,
-        file_name="steel_results.xlsx",
+        file_name=f"{safe_project_name(project)}_steel_results.xlsx" if project else "steel_results.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
