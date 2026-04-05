@@ -342,7 +342,7 @@ if st.session_state.rows:
 
     for col in expected_columns:
         if col not in detail_df.columns:
-            detail_df[col] = ""
+            detail_df[col] = 0
 
     detail_df = detail_df[expected_columns]
 
@@ -377,7 +377,7 @@ if st.session_state.rows:
         row_dict = calculate_row(row_dict, df)
         recalculated_rows.append(row_dict)
 
-    recalculated_df = pd.DataFrame(recalculated_rows)
+    recalculated_df = pd.DataFrame(recalculated_rows).fillna(0)
     st.session_state.rows = recalculated_df.to_dict("records")
     save_results(st.session_state.rows)
 
@@ -451,13 +451,19 @@ if st.session_state.rows:
             ["Profile", "Fab Length", "Fab Qty", "Waste Length", "Waste Weight"]
         ]
 
-        st.dataframe(fab_waste_df, use_container_width=True, hide_index=True)
-
         total_waste_weight = round(fab_waste_df["Waste Weight"].sum(), 2)
 
-        c1, c2, c3, c4, c5 = st.columns(5)
-        with c5:
-            st.markdown(f"Total: {total_waste_weight}")
+        total_row = pd.DataFrame([{
+            "Profile": "",
+            "Fab Length": "",
+            "Fab Qty": "",
+            "Waste Length": "Total",
+            "Waste Weight": total_waste_weight
+        }])
+
+        fab_waste_display = pd.concat([fab_waste_df, total_row], ignore_index=True)
+
+        st.dataframe(fab_waste_display, use_container_width=True, hide_index=True)
 
     else:
         fab_waste_df = pd.DataFrame(columns=["Profile", "Fab Length", "Fab Qty", "Waste Length", "Waste Weight"])
