@@ -14,12 +14,13 @@ PROJECTS_DIR.mkdir(exist_ok=True)
 
 PROFILES_FILE = "Profiles.xlsx"
 MAX_PIECE_LENGTH = 23.0
+DEFAULT_PROJECT_NAME = "default_project"
 
 
 def safe_project_name(name):
     name = str(name).strip()
     name = re.sub(r"[^A-Za-z0-9_-]+", "_", name)
-    return name if name else "default_project"
+    return name if name else DEFAULT_PROJECT_NAME
 
 
 def get_project_results_file(project_name):
@@ -127,9 +128,6 @@ def load_profiles():
 
 
 def load_fabric_standards(project_name):
-    if not project_name:
-        return pd.DataFrame(columns=["Supply", "Profile Type", "Fabric Standard Length"])
-
     fabric_file = get_project_fabric_file(project_name)
 
     if fabric_file.exists():
@@ -144,8 +142,6 @@ def load_fabric_standards(project_name):
 
 
 def save_fabric_standards(df, project_name):
-    if not project_name:
-        return
     fabric_file = get_project_fabric_file(project_name)
     df.to_excel(fabric_file, index=False)
 
@@ -220,15 +216,11 @@ def calculate_row(row_data, profile_df):
 
 
 def save_results(rows, project_name):
-    if not project_name:
-        return
     results_file = get_project_results_file(project_name)
     pd.DataFrame(rows).to_excel(results_file, index=False)
 
 
 def load_saved_results(project_name):
-    if not project_name:
-        return []
     results_file = get_project_results_file(project_name)
     if results_file.exists():
         saved_df = pd.read_excel(results_file).fillna("")
@@ -261,19 +253,26 @@ existing_projects = sorted([
 project_mode = st.radio("Mode", ["New Project", "Open Project"], horizontal=True)
 
 if project_mode == "New Project":
-    project = st.text_input("Project Name")
+    project_input = st.text_input("Project Name")
+    project = project_input.strip() if project_input.strip() else DEFAULT_PROJECT_NAME
 else:
     project = st.selectbox("Select Project", existing_projects) if existing_projects else ""
 
-if project and project != st.session_state.active_project:
-    st.session_state.active_project = project
-    st.session_state.rows = load_saved_results(project)
+if project_mode == "New Project":
+    if st.session_state.active_project != DEFAULT_PROJECT_NAME:
+        st.session_state.active_project = DEFAULT_PROJECT_NAME
+        st.session_state.rows = []
+
+if project_mode == "Open Project":
+    if project and project != st.session_state.active_project:
+        st.session_state.active_project = project
+        st.session_state.rows = load_saved_results(project)
 
 boq = st.text_input("BOQ Article")
 
 st.subheader("Fab Setup")
 
-fabric_df = load_fabric_standards(project)
+fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
 
 fc1, fc2, fc3 = st.columns(3)
 
@@ -287,9 +286,7 @@ with fc3:
     fabric_standard_length_input = st.number_input("Fab Length", min_value=0.0, step=0.5)
 
 if st.button("Add Fab"):
-    if not project:
-        st.warning("Enter or select a project first.")
-    elif supply_name_input == "":
+    if supply_name_input == "":
         st.warning("Please enter a Supply name.")
     else:
         new_row = pd.DataFrame([{
@@ -306,9 +303,9 @@ if st.button("Add Fab"):
         ]
 
         fabric_df = pd.concat([fabric_df, new_row], ignore_index=True)
-        save_fabric_standards(fabric_df, project)
+        save_fabric_standards(fabric_df, st.session_state.active_project or DEFAULT_PROJECT_NAME)
         st.success("Fab data saved.")
-        fabric_df = load_fabric_standards(project)
+        fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
 
 if not fabric_df.empty:
     st.dataframe(fabric_df, use_container_width=True, hide_index=True)
@@ -364,21 +361,14 @@ col_btn1, col_btn2 = st.columns(2)
 
 with col_btn1:
     if st.button("Add"):
-        if not project:
-            st.warning("Enter or select a project first.")
-        else:
-            st.session_state.rows.append(current_data.copy())
-            save_results(st.session_state.rows, project)
-            st.success("Row added and saved.")
+        st.session_state.rows.append(current_data.copy())
+        save_results(st.session_state.rows, st.session_state.active_project or DEFAULT_PROJECT_NAME)
+        st.success("Row added and saved.")
 
 with col_btn2:
-    if st.button("Clear Project Rows"):
+    if st.button("Clear Screen"):
         st.session_state.rows = []
-        if project:
-            results_file = get_project_results_file(project)
-            if results_file.exists():
-                results_file.unlink()
-        st.success("Project rows cleared.")
+        st.success("Current screen cleared.")
 
 st.subheader("Detail Results")
 
@@ -431,9 +421,7 @@ if st.session_state.rows:
 
     recalculated_df = pd.DataFrame(recalculated_rows).fillna(0)
     st.session_state.rows = recalculated_df.to_dict("records")
-
-    if project:
-        save_results(st.session_state.rows, project)
+    save_results(st.session_state.rows, st.session_state.active_project or DEFAULT_PROJECT_NAME)
 
     st.dataframe(recalculated_df, use_container_width=True, hide_index=True)
 
@@ -460,7 +448,7 @@ if st.session_state.rows:
 
     st.subheader("Fab Waste")
 
-    fabric_df = load_fabric_standards(project)
+    fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
     supply_options = sorted(fabric_df["Supply"].dropna().astype(str).str.strip().unique().tolist())
 
     if supply_options:
@@ -503,7 +491,7 @@ if st.session_state.rows:
 
         fab_waste_df = fab_waste_df[
             ["Profile", "Fab Length", "Fab Qty", "Waste Length", "Waste Weight"]
-        ]
+        ].fillna(0)
 
         total_waste_weight = round(fab_waste_df["Waste Weight"].sum(), 2)
 
@@ -542,7 +530,7 @@ if st.session_state.rows:
     st.download_button(
         label="Export to Excel",
         data=output,
-        file_name=f"{safe_project_name(project)}_steel_results.xlsx" if project else "steel_results.xlsx",
+        file_name=f"{safe_project_name(project)}_steel_results.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
