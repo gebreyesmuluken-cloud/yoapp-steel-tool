@@ -9,7 +9,9 @@ st.title("Steel Calculation App")
 
 RESULTS_FILE = "results.xlsx"
 PROFILES_FILE = "Profiles.xlsx"
+FABRIC_FILE = "fabric_standards.xlsx"
 MAX_PIECE_LENGTH = 23.0
+
 
 def to_float(value, default=0.0):
     if pd.isna(value):
@@ -22,6 +24,7 @@ def to_float(value, default=0.0):
         return float(value)
     except:
         return default
+
 
 def split_length_and_quantity(length, number, max_piece_length=23.0):
     length = to_float(length)
@@ -39,6 +42,7 @@ def split_length_and_quantity(length, number, max_piece_length=23.0):
 
     return split_length, new_number, pieces_per_item
 
+
 def get_zbsl(profile_row, calc_length):
     if calc_length <= 5:
         return to_float(profile_row.get("Lte5", 0))
@@ -53,33 +57,68 @@ def get_zbsl(profile_row, calc_length):
     else:
         return to_float(profile_row.get("Gt18", 0))
 
+
 def get_profile_type(profile_name):
     profile_name = str(profile_name).strip().upper()
 
-    if profile_name.startswith("HE"):
-        return "HE"
-    elif profile_name.startswith("K"):
-        return "RHS"
-    elif profile_name.startswith("R"):
-        return "CHS"
+    if profile_name.startswith(("HEA", "HEB", "HEM", "IPE", "IPN", "INP")):
+        return "I Profile"
+    elif profile_name.startswith(("K", "RHS", "SHS")):
+        return "RHS Profile"
     elif profile_name.startswith("L"):
-        return "L"
+        return "L Profile"
+    elif profile_name.startswith(("UPE", "UNP", "UPN")):
+        return "U Profile"
+    elif profile_name.startswith(("R", "CHS")):
+        return "CHS Profile"
     else:
         return "Other"
 
-def get_standard_length(profile_name, he_len, rhs_len, chs_len, l_len):
-    profile_type = get_profile_type(profile_name)
 
-    if profile_type == "HE":
-        return he_len
-    elif profile_type == "RHS":
-        return rhs_len
-    elif profile_type == "CHS":
-        return chs_len
-    elif profile_type == "L":
-        return l_len
-    else:
-        return 0.0
+def load_profiles():
+    if not os.path.exists(PROFILES_FILE):
+        st.error(f"{PROFILES_FILE} not found.")
+        st.stop()
+
+    df = pd.read_excel(PROFILES_FILE, header=0)
+    df.columns = df.columns.str.strip()
+
+    required_cols = ["Profile", "kgm", "m2_per_m", "Lte5", "L5to8", "L8to11", "L11to14", "L14to18", "Gt18"]
+    missing = [col for col in required_cols if col not in df.columns]
+
+    if missing:
+        st.error(f"Missing columns in {PROFILES_FILE}: {missing}")
+        st.write("Columns found:", df.columns.tolist())
+        st.stop()
+
+    return df
+
+
+def load_fabric_standards():
+    if os.path.exists(FABRIC_FILE):
+        df = pd.read_excel(FABRIC_FILE).fillna("")
+        expected_cols = ["Supply", "Profile Type", "Fabric Standard Length"]
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = ""
+        return df[expected_cols]
+
+    return pd.DataFrame(columns=["Supply", "Profile Type", "Fabric Standard Length"])
+
+
+def save_fabric_standards(df):
+    df.to_excel(FABRIC_FILE, index=False)
+
+
+def get_fabric_row(profile_type, supply_name, fabric_df):
+    match = fabric_df[
+        (fabric_df["Profile Type"].astype(str).str.strip() == str(profile_type).strip()) &
+        (fabric_df["Supply"].astype(str).str.strip() == str(supply_name).strip())
+    ]
+    if not match.empty:
+        return match.iloc[0]
+    return None
+
 
 def calculate_row(row_data, profile_df):
     profile_name = str(row_data.get("Profile", "")).strip()
@@ -134,26 +173,10 @@ def calculate_row(row_data, profile_df):
 
     return row_data
 
-def load_profiles():
-    if not os.path.exists(PROFILES_FILE):
-        st.error(f"{PROFILES_FILE} not found.")
-        st.stop()
-
-    df = pd.read_excel(PROFILES_FILE, header=0)
-    df.columns = df.columns.str.strip()
-
-    required_cols = ["Profile", "kgm", "m2_per_m", "Lte5", "L5to8", "L8to11", "L11to14", "L14to18", "Gt18"]
-    missing = [col for col in required_cols if col not in df.columns]
-
-    if missing:
-        st.error(f"Missing columns in {PROFILES_FILE}: {missing}")
-        st.write("Columns found:", df.columns.tolist())
-        st.stop()
-
-    return df
 
 def save_results(rows):
     pd.DataFrame(rows).to_excel(RESULTS_FILE, index=False)
+
 
 def load_saved_results():
     if os.path.exists(RESULTS_FILE):
@@ -161,8 +184,12 @@ def load_saved_results():
         return saved_df.to_dict("records")
     return []
 
+
 df = load_profiles()
+df["Profile Type"] = df["Profile"].astype(str).apply(get_profile_type)
+
 profile_list = df["Profile"].dropna().astype(str).str.strip().tolist()
+profile_type_options = sorted(df["Profile Type"].dropna().astype(str).unique().tolist())
 
 floor_options = ["Ground Floor", "First Floor", "Second Floor", "Third Floor", "Fourth Floor"]
 sub_article_options = ["Beam", "Column", "Brace", "Plate", "Connection"]
@@ -179,20 +206,45 @@ with col1:
 with col2:
     boq = st.text_input("BOQ Article")
 
-st.subheader("Fabric Standard Lengths")
-f1, f2, f3, f4 = st.columns(4)
+st.subheader("Fab Setup")
 
-with f1:
-    he_standard_length = st.number_input("HE Standard Length (m)", min_value=0.0, value=12.0, step=0.5)
+fabric_df = load_fabric_standards()
 
-with f2:
-    rhs_standard_length = st.number_input("RHS Standard Length (m), K...", min_value=0.0, value=6.0, step=0.5)
+fc1, fc2, fc3 = st.columns(3)
 
-with f3:
-    chs_standard_length = st.number_input("CHS Standard Length (m), R...", min_value=0.0, value=6.0, step=0.5)
+with fc1:
+    supply_name_input = st.text_input("Supply").strip()
 
-with f4:
-    l_standard_length = st.number_input("L Standard Length (m), L...", min_value=0.0, value=6.0, step=0.5)
+with fc2:
+    selected_profile_type = st.selectbox("Profile Type", profile_type_options)
+
+with fc3:
+    fabric_standard_length_input = st.number_input("Fab Length", min_value=0.0, step=0.5)
+
+if st.button("Add Fab"):
+    if supply_name_input == "":
+        st.warning("Please enter a Supply name.")
+    else:
+        new_row = pd.DataFrame([{
+            "Supply": supply_name_input,
+            "Profile Type": selected_profile_type,
+            "Fabric Standard Length": fabric_standard_length_input
+        }])
+
+        fabric_df = fabric_df[
+            ~(
+                (fabric_df["Supply"].astype(str).str.strip() == supply_name_input) &
+                (fabric_df["Profile Type"].astype(str).str.strip() == selected_profile_type)
+            )
+        ]
+
+        fabric_df = pd.concat([fabric_df, new_row], ignore_index=True)
+        save_fabric_standards(fabric_df)
+        st.success("Fab data saved.")
+        fabric_df = load_fabric_standards()
+
+if not fabric_df.empty:
+    st.dataframe(fabric_df, use_container_width=True, hide_index=True)
 
 st.subheader("Input Data")
 col3, col4, col5, col6, col7, col8 = st.columns(6)
@@ -308,17 +360,17 @@ if st.session_state.rows:
 
     st.dataframe(recalculated_df, use_container_width=True, hide_index=True)
 
-    st.subheader("Summary by Floor Level and Sub Article")
+    st.subheader("Summary by Floor")
     summary_df = recalculated_df.groupby(
         ["Floor Level", "Sub Article"], as_index=False
     )[["Number", "Total Treatment Area", "Total Weight", "Total ZBSL", "Total Levering Price"]].sum()
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-    st.subheader("Summary by Profile")
+    st.subheader("Profile Sum")
     profile_summary_df = recalculated_df.groupby("Profile", as_index=False).agg({
         "Length": "sum",
         "Number": "sum",
-        "kg/m": "first"
+        "Total Weight": "sum"
     })
 
     profile_summary_df = profile_summary_df.rename(columns={
@@ -326,60 +378,70 @@ if st.session_state.rows:
         "Number": "Total Number"
     })
 
-    profile_summary_df["Profile Type"] = profile_summary_df["Profile"].apply(get_profile_type)
-
-    profile_summary_df["Standard Length"] = profile_summary_df["Profile"].apply(
-        lambda x: get_standard_length(
-            x,
-            he_standard_length,
-            rhs_standard_length,
-            chs_standard_length,
-            l_standard_length
-        )
-    )
-
-    profile_summary_df["Required Standard Bars"] = profile_summary_df.apply(
-        lambda row: math.ceil(row["Total Length"] / row["Standard Length"])
-        if to_float(row["Standard Length"]) > 0 else 0,
-        axis=1
-    )
-
-    profile_summary_df["Waste Length"] = profile_summary_df.apply(
-        lambda row: round(
-            row["Required Standard Bars"] * row["Standard Length"] - row["Total Length"], 2
-        ) if to_float(row["Standard Length"]) > 0 else 0,
-        axis=1
-    )
-
-    profile_summary_df["Waste Weight"] = profile_summary_df.apply(
-        lambda row: round(row["Waste Length"] * row["kg/m"], 2),
-        axis=1
-    )
-
-    profile_summary_df = profile_summary_df[
-        [
-            "Profile",
-            "Profile Type",
-            "Total Length",
-            "Total Number",
-            "kg/m",
-            "Standard Length",
-            "Required Standard Bars",
-            "Waste Length",
-            "Waste Weight"
-        ]
-    ]
-
     st.dataframe(profile_summary_df, use_container_width=True, hide_index=True)
 
-    total_waste_weight = round(profile_summary_df["Waste Weight"].sum(), 2)
-    st.metric("Total Waste Weight", total_waste_weight)
+    st.subheader("Fab Waste")
+
+    fabric_df = load_fabric_standards()
+    supply_options = sorted(fabric_df["Supply"].dropna().astype(str).str.strip().unique().tolist())
+
+    if supply_options:
+        selected_supply = st.selectbox("Select Supply", supply_options)
+
+        fab_waste_df = profile_summary_df.copy()
+        fab_waste_df["Profile Type"] = fab_waste_df["Profile"].apply(get_profile_type)
+
+        fab_waste_df["Fab Length"] = fab_waste_df["Profile Type"].apply(
+            lambda pt: to_float(
+                get_fabric_row(pt, selected_supply, fabric_df)["Fabric Standard Length"],
+                0.0
+            ) if get_fabric_row(pt, selected_supply, fabric_df) is not None else 0.0
+        )
+
+        fab_waste_df["Fab Qty"] = fab_waste_df.apply(
+            lambda row: math.ceil(row["Total Length"] / row["Fab Length"])
+            if to_float(row["Fab Length"]) > 0 else 0,
+            axis=1
+        )
+
+        fab_waste_df["kg/m"] = fab_waste_df["Profile"].apply(
+            lambda p: to_float(
+                df[df["Profile"].astype(str).str.strip() == str(p).strip()].iloc[0]["kgm"],
+                0.0
+            ) if not df[df["Profile"].astype(str).str.strip() == str(p).strip()].empty else 0.0
+        )
+
+        fab_waste_df["Waste Length"] = fab_waste_df.apply(
+            lambda row: round(
+                row["Fab Qty"] * row["Fab Length"] - row["Total Length"], 2
+            ) if to_float(row["Fab Length"]) > 0 else 0.0,
+            axis=1
+        )
+
+        fab_waste_df["Waste Weight"] = fab_waste_df.apply(
+            lambda row: round(row["Waste Length"] * row["kg/m"], 2),
+            axis=1
+        )
+
+        fab_waste_df = fab_waste_df[
+            ["Profile", "Fab Length", "Fab Qty", "Waste Length", "Waste Weight"]
+        ]
+
+        st.dataframe(fab_waste_df, use_container_width=True, hide_index=True)
+
+        total_waste_weight = round(fab_waste_df["Waste Weight"].sum(), 2)
+        st.metric("Total Waste Weight", total_waste_weight)
+    else:
+        fab_waste_df = pd.DataFrame(columns=["Profile", "Fab Length", "Fab Qty", "Waste Length", "Waste Weight"])
+        total_waste_weight = 0.0
+        st.info("Add Fab Setup data first.")
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         recalculated_df.to_excel(writer, index=False, sheet_name="Detail Results")
         summary_df.to_excel(writer, index=False, sheet_name="Summary by Floor")
-        profile_summary_df.to_excel(writer, index=False, sheet_name="Summary by Profile")
+        profile_summary_df.to_excel(writer, index=False, sheet_name="Profile Sum")
+        fab_waste_df.to_excel(writer, index=False, sheet_name="Fab Waste")
 
         total_waste_df = pd.DataFrame({
             "Item": ["Total Waste Weight"],
