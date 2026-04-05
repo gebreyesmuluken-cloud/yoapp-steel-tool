@@ -156,6 +156,20 @@ def get_fabric_row(profile_type, supply_name, fabric_df):
     return None
 
 
+def rename_project_files(old_name, new_name):
+    old_results = get_project_results_file(old_name)
+    old_fabric = get_project_fabric_file(old_name)
+
+    new_results = get_project_results_file(new_name)
+    new_fabric = get_project_fabric_file(new_name)
+
+    if old_results.exists():
+        old_results.rename(new_results)
+
+    if old_fabric.exists():
+        old_fabric.rename(new_fabric)
+
+
 def calculate_row(row_data, profile_df):
     profile_name = str(row_data.get("Profile", "")).strip()
 
@@ -243,6 +257,9 @@ if "active_project" not in st.session_state:
 if "rows" not in st.session_state:
     st.session_state.rows = []
 
+if "loaded_boq" not in st.session_state:
+    st.session_state.loaded_boq = ""
+
 st.subheader("Project")
 
 existing_projects = sorted([
@@ -250,25 +267,83 @@ existing_projects = sorted([
     for p in PROJECTS_DIR.glob("*_results.xlsx")
 ])
 
-project_mode = st.radio("Mode", ["New Project", "Open Project"], horizontal=True)
+project_mode = st.radio("Mode", ["New Project", "Open Project", "Save"], horizontal=True)
+
+project = ""
+rename_project = ""
 
 if project_mode == "New Project":
     project_input = st.text_input("Project Name")
     project = project_input.strip() if project_input.strip() else DEFAULT_PROJECT_NAME
-else:
-    project = st.selectbox("Select Project", existing_projects) if existing_projects else ""
 
-if project_mode == "New Project":
     if st.session_state.active_project != DEFAULT_PROJECT_NAME:
         st.session_state.active_project = DEFAULT_PROJECT_NAME
         st.session_state.rows = []
+        st.session_state.loaded_boq = ""
 
 if project_mode == "Open Project":
-    if project and project != st.session_state.active_project:
-        st.session_state.active_project = project
-        st.session_state.rows = load_saved_results(project)
+    project = st.selectbox("Select Project", existing_projects) if existing_projects else ""
 
-boq = st.text_input("BOQ Article")
+    if st.button("Load Project"):
+        if project:
+            st.session_state.active_project = project
+            st.session_state.rows = load_saved_results(project)
+            if st.session_state.rows:
+                first_row = st.session_state.rows[0]
+                st.session_state.loaded_boq = str(first_row.get("BOQ Article", ""))
+            else:
+                st.session_state.loaded_boq = ""
+            st.success(f"Loaded: {project}")
+
+if project_mode == "Save":
+    save_project_name = st.text_input(
+        "Save Project Name",
+        value=st.session_state.active_project if st.session_state.active_project else ""
+    ).strip()
+
+    rename_project = st.text_input("Rename To", key="rename_project")
+
+    col_save1, col_save2 = st.columns(2)
+
+    with col_save1:
+        if st.button("Save Project"):
+            save_name = save_project_name if save_project_name else DEFAULT_PROJECT_NAME
+            rows_to_save = []
+
+            for row in st.session_state.rows:
+                updated_row = dict(row)
+                updated_row["Project Name"] = save_name
+                updated_row["BOQ Article"] = st.session_state.loaded_boq
+                rows_to_save.append(updated_row)
+
+            save_results(rows_to_save, save_name)
+
+            current_fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
+            save_fabric_standards(current_fabric_df, save_name)
+
+            st.session_state.active_project = save_name
+            st.session_state.rows = rows_to_save
+            st.success(f"Saved: {save_name}")
+
+    with col_save2:
+        if st.button("Rename Project"):
+            if (
+                st.session_state.active_project
+                and rename_project.strip()
+                and st.session_state.active_project != DEFAULT_PROJECT_NAME
+            ):
+                rename_project_files(st.session_state.active_project, rename_project.strip())
+                st.session_state.active_project = rename_project.strip()
+                for i in range(len(st.session_state.rows)):
+                    st.session_state.rows[i]["Project Name"] = rename_project.strip()
+                st.success(f"Renamed to: {rename_project.strip()}")
+                st.rerun()
+
+boq_default = st.session_state.loaded_boq if project_mode != "New Project" else ""
+boq = st.text_input("BOQ Article", value=boq_default)
+
+if boq != st.session_state.loaded_boq:
+    st.session_state.loaded_boq = boq
 
 st.subheader("Fab Setup")
 
@@ -331,8 +406,10 @@ with col7:
 with col8:
     price_per_ton = st.number_input("Price per ton", min_value=0.0, step=10.0, format="%.2f")
 
+current_project_name = st.session_state.active_project or DEFAULT_PROJECT_NAME
+
 current_data = {
-    "Project Name": project,
+    "Project Name": current_project_name,
     "BOQ Article": boq,
     "Floor Level": floor_level,
     "Sub Article": sub_article,
@@ -362,8 +439,7 @@ col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
     if st.button("Add"):
         st.session_state.rows.append(current_data.copy())
-        save_results(st.session_state.rows, st.session_state.active_project or DEFAULT_PROJECT_NAME)
-        st.success("Row added and saved.")
+        st.success("Row added.")
 
 with col_btn2:
     if st.button("Clear Screen"):
@@ -416,12 +492,13 @@ if st.session_state.rows:
     recalculated_rows = []
     for _, row_item in edited_df.iterrows():
         row_dict = row_item.to_dict()
+        row_dict["Project Name"] = st.session_state.active_project or DEFAULT_PROJECT_NAME
+        row_dict["BOQ Article"] = st.session_state.loaded_boq
         row_dict = calculate_row(row_dict, df)
         recalculated_rows.append(row_dict)
 
     recalculated_df = pd.DataFrame(recalculated_rows).fillna(0)
     st.session_state.rows = recalculated_df.to_dict("records")
-    save_results(st.session_state.rows, st.session_state.active_project or DEFAULT_PROJECT_NAME)
 
     st.dataframe(recalculated_df, use_container_width=True, hide_index=True)
 
@@ -527,10 +604,12 @@ if st.session_state.rows:
 
     output.seek(0)
 
+    export_name = st.session_state.active_project or DEFAULT_PROJECT_NAME
+
     st.download_button(
         label="Export to Excel",
         data=output,
-        file_name=f"{safe_project_name(project)}_steel_results.xlsx",
+        file_name=f"{safe_project_name(export_name)}_steel_results.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
