@@ -27,8 +27,8 @@ def get_project_results_file(project_name):
     return PROJECTS_DIR / f"{safe_project_name(project_name)}_results.xlsx"
 
 
-def get_project_fabric_file(project_name):
-    return PROJECTS_DIR / f"{safe_project_name(project_name)}_fabric.xlsx"
+def get_project_supplier_file(project_name):
+    return PROJECTS_DIR / f"{safe_project_name(project_name)}_supplier.xlsx"
 
 
 def to_float(value, default=0.0):
@@ -127,29 +127,29 @@ def load_profiles():
     return df
 
 
-def load_fabric_standards(project_name):
-    fabric_file = get_project_fabric_file(project_name)
+def load_supplier_data(project_name):
+    supplier_file = get_project_supplier_file(project_name)
 
-    if fabric_file.exists():
-        df = pd.read_excel(fabric_file).fillna("")
-        expected_cols = ["Supply", "Profile Type", "Fabric Standard Length"]
+    if supplier_file.exists():
+        df = pd.read_excel(supplier_file).fillna("")
+        expected_cols = ["Supplier", "Profile Type", "Fabric Standard Length"]
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = ""
         return df[expected_cols]
 
-    return pd.DataFrame(columns=["Supply", "Profile Type", "Fabric Standard Length"])
+    return pd.DataFrame(columns=["Supplier", "Profile Type", "Fabric Standard Length"])
 
 
-def save_fabric_standards(df, project_name):
-    fabric_file = get_project_fabric_file(project_name)
-    df.to_excel(fabric_file, index=False)
+def save_supplier_data(df, project_name):
+    supplier_file = get_project_supplier_file(project_name)
+    df.to_excel(supplier_file, index=False)
 
 
-def get_fabric_row(profile_type, supply_name, fabric_df):
-    match = fabric_df[
-        (fabric_df["Profile Type"].astype(str).str.strip() == str(profile_type).strip()) &
-        (fabric_df["Supply"].astype(str).str.strip() == str(supply_name).strip())
+def get_supplier_row(profile_type, supplier_name, supplier_df):
+    match = supplier_df[
+        (supplier_df["Profile Type"].astype(str).str.strip() == str(profile_type).strip()) &
+        (supplier_df["Supplier"].astype(str).str.strip() == str(supplier_name).strip())
     ]
     if not match.empty:
         return match.iloc[0]
@@ -158,16 +158,16 @@ def get_fabric_row(profile_type, supply_name, fabric_df):
 
 def rename_project_files(old_name, new_name):
     old_results = get_project_results_file(old_name)
-    old_fabric = get_project_fabric_file(old_name)
+    old_supplier = get_project_supplier_file(old_name)
 
     new_results = get_project_results_file(new_name)
-    new_fabric = get_project_fabric_file(new_name)
+    new_supplier = get_project_supplier_file(new_name)
 
     if old_results.exists():
         old_results.rename(new_results)
 
-    if old_fabric.exists():
-        old_fabric.rename(new_fabric)
+    if old_supplier.exists():
+        old_supplier.rename(new_supplier)
 
 
 def calculate_row(row_data, profile_df):
@@ -267,77 +267,80 @@ existing_projects = sorted([
     for p in PROJECTS_DIR.glob("*_results.xlsx")
 ])
 
-project_mode = st.radio("Mode", ["New Project", "Open Project", "Save"], horizontal=True)
+p1, p2 = st.columns([1, 2])
 
-project = ""
-rename_project = ""
+with p1:
+    project_mode = st.radio("Mode", ["New Project", "Open Project", "Save"])
 
-if project_mode == "New Project":
-    project_input = st.text_input("Project Name")
-    project = project_input.strip() if project_input.strip() else DEFAULT_PROJECT_NAME
+with p2:
+    project = ""
+    rename_project = ""
 
-    if st.session_state.active_project != DEFAULT_PROJECT_NAME:
-        st.session_state.active_project = DEFAULT_PROJECT_NAME
-        st.session_state.rows = []
-        st.session_state.loaded_boq = ""
+    if project_mode == "New Project":
+        project_input = st.text_input("Project Name")
+        project = project_input.strip() if project_input.strip() else DEFAULT_PROJECT_NAME
 
-if project_mode == "Open Project":
-    project = st.selectbox("Select Project", existing_projects) if existing_projects else ""
+        if st.session_state.active_project != DEFAULT_PROJECT_NAME:
+            st.session_state.active_project = DEFAULT_PROJECT_NAME
+            st.session_state.rows = []
+            st.session_state.loaded_boq = ""
 
-    if st.button("Load Project"):
-        if project:
-            st.session_state.active_project = project
-            st.session_state.rows = load_saved_results(project)
-            if st.session_state.rows:
-                first_row = st.session_state.rows[0]
-                st.session_state.loaded_boq = str(first_row.get("BOQ Article", ""))
-            else:
-                st.session_state.loaded_boq = ""
-            st.success(f"Loaded: {project}")
+    elif project_mode == "Open Project":
+        project = st.selectbox("Select Project", existing_projects) if existing_projects else ""
+        if st.button("Load Project"):
+            if project:
+                st.session_state.active_project = project
+                st.session_state.rows = load_saved_results(project)
+                if st.session_state.rows:
+                    first_row = st.session_state.rows[0]
+                    st.session_state.loaded_boq = str(first_row.get("BOQ Article", ""))
+                else:
+                    st.session_state.loaded_boq = ""
+                st.success(f"Loaded: {project}")
 
-if project_mode == "Save":
-    save_project_name = st.text_input(
-        "Save Project Name",
-        value=st.session_state.active_project if st.session_state.active_project else ""
-    ).strip()
+    elif project_mode == "Save":
+        save_project_name = st.text_input(
+            "Save Project Name",
+            value=st.session_state.active_project if st.session_state.active_project else ""
+        ).strip()
 
-    rename_project = st.text_input("Rename To", key="rename_project")
+        rename_project = st.text_input("Rename To", key="rename_project")
 
-    col_save1, col_save2 = st.columns(2)
+        sp1, sp2 = st.columns(2)
 
-    with col_save1:
-        if st.button("Save Project"):
-            save_name = save_project_name if save_project_name else DEFAULT_PROJECT_NAME
-            rows_to_save = []
+        with sp1:
+            if st.button("Save Project"):
+                save_name = save_project_name if save_project_name else DEFAULT_PROJECT_NAME
+                rows_to_save = []
 
-            for row in st.session_state.rows:
-                updated_row = dict(row)
-                updated_row["Project Name"] = save_name
-                updated_row["BOQ Article"] = st.session_state.loaded_boq
-                rows_to_save.append(updated_row)
+                for row in st.session_state.rows:
+                    updated_row = dict(row)
+                    updated_row["Project Name"] = save_name
+                    updated_row["BOQ Article"] = st.session_state.loaded_boq
+                    rows_to_save.append(updated_row)
 
-            save_results(rows_to_save, save_name)
+                save_results(rows_to_save, save_name)
 
-            current_fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
-            save_fabric_standards(current_fabric_df, save_name)
+                current_supplier_df = load_supplier_data(st.session_state.active_project or DEFAULT_PROJECT_NAME)
+                save_supplier_data(current_supplier_df, save_name)
 
-            st.session_state.active_project = save_name
-            st.session_state.rows = rows_to_save
-            st.success(f"Saved: {save_name}")
+                st.session_state.active_project = save_name
+                st.session_state.rows = rows_to_save
+                st.success(f"Saved: {save_name}")
 
-    with col_save2:
-        if st.button("Rename Project"):
-            if (
-                st.session_state.active_project
-                and rename_project.strip()
-                and st.session_state.active_project != DEFAULT_PROJECT_NAME
-            ):
-                rename_project_files(st.session_state.active_project, rename_project.strip())
-                st.session_state.active_project = rename_project.strip()
-                for i in range(len(st.session_state.rows)):
-                    st.session_state.rows[i]["Project Name"] = rename_project.strip()
-                st.success(f"Renamed to: {rename_project.strip()}")
-                st.rerun()
+        with sp2:
+            if st.button("Rename Project"):
+                if (
+                    st.session_state.active_project
+                    and rename_project.strip()
+                    and st.session_state.active_project != DEFAULT_PROJECT_NAME
+                ):
+                    rename_project_files(st.session_state.active_project, rename_project.strip())
+                    st.session_state.active_project = rename_project.strip()
+                    for i in range(len(st.session_state.rows)):
+                        st.session_state.rows[i]["Project Name"] = rename_project.strip()
+                    st.success(f"Renamed to: {rename_project.strip()}")
+                    st.rerun()
 
 boq_default = st.session_state.loaded_boq if project_mode != "New Project" else ""
 boq = st.text_input("BOQ Article", value=boq_default)
@@ -345,66 +348,92 @@ boq = st.text_input("BOQ Article", value=boq_default)
 if boq != st.session_state.loaded_boq:
     st.session_state.loaded_boq = boq
 
-st.subheader("Input Data")
-col3, col4, col5, col6, col7, col8 = st.columns(6)
+left_col, right_col = st.columns([2, 1])
 
-with col3:
-    floor_level = st.selectbox("Floor Level", floor_options)
+with left_col:
+    st.subheader("Input Data")
 
-with col4:
-    sub_article = st.selectbox("Sub Article", sub_article_options)
+    i1, i2, i3 = st.columns(3)
+    with i1:
+        floor_level = st.selectbox("Floor Level", floor_options)
+    with i2:
+        sub_article = st.selectbox("Sub Article", sub_article_options)
+    with i3:
+        profile = st.selectbox("Profile", profile_list)
 
-with col5:
-    profile = st.selectbox("Profile", profile_list)
+    i4, i5, i6 = st.columns(3)
+    with i4:
+        length = st.number_input("Length (m)", min_value=0.0, step=0.1, format="%.2f")
+    with i5:
+        quantity = st.number_input("Quantity", min_value=1, step=1)
+    with i6:
+        price_per_ton = st.number_input("Price per ton", min_value=0.0, step=10.0, format="%.2f")
 
-with col6:
-    length = st.number_input("Length (m)", min_value=0.0, step=0.1, format="%.2f")
+    current_project_name = st.session_state.active_project or DEFAULT_PROJECT_NAME
 
-with col7:
-    quantity = st.number_input("Quantity", min_value=1, step=1)
+    current_data = {
+        "Project Name": current_project_name,
+        "BOQ Article": boq,
+        "Floor Level": floor_level,
+        "Sub Article": sub_article,
+        "Profile": profile,
+        "Length": length,
+        "Number": quantity,
+        "Price/t": price_per_ton,
+        "Split Pieces": 1,
+        "kg/m": 0.0,
+        "Total Treatment Area": 0.0,
+        "Net Weight": 0.0,
+        "Weight Incl. Waste": 0.0,
+        "Total ZBSL": 0.0,
+        "Total Levering Price": 0.0
+    }
 
-with col8:
-    price_per_ton = st.number_input("Price per ton", min_value=0.0, step=10.0, format="%.2f")
+    current_data = calculate_row(current_data, df)
 
-current_project_name = st.session_state.active_project or DEFAULT_PROJECT_NAME
+    b1, b2 = st.columns(2)
+    with b1:
+        if st.button("Add"):
+            st.session_state.rows.append(current_data.copy())
+            st.success("Row added.")
+    with b2:
+        if st.button("Clear Screen"):
+            st.session_state.rows = []
+            st.success("Current screen cleared.")
 
-current_data = {
-    "Project Name": current_project_name,
-    "BOQ Article": boq,
-    "Floor Level": floor_level,
-    "Sub Article": sub_article,
-    "Profile": profile,
-    "Length": length,
-    "Number": quantity,
-    "Price/t": price_per_ton,
-    "Split Pieces": 1,
-    "kg/m": 0.0,
-    "Total Treatment Area": 0.0,
-    "Net Weight": 0.0,
-    "Weight Incl. Waste": 0.0,
-    "Total ZBSL": 0.0,
-    "Total Levering Price": 0.0
-}
+with right_col:
+    st.subheader("Supplier Data")
 
-current_data = calculate_row(current_data, df)
+    supplier_df = load_supplier_data(st.session_state.active_project or DEFAULT_PROJECT_NAME)
 
-st.subheader("Current Result")
-current_result_df = pd.DataFrame([current_data])[[
-    "Floor Level", "Sub Article", "Profile", "Length", "Number", "Price/t"
-]]
-st.dataframe(current_result_df, use_container_width=True, hide_index=True)
+    supplier_name_input = st.text_input("Supplier").strip()
+    selected_profile_type = st.selectbox("Profile Type", profile_type_options)
+    fabric_standard_length_input = st.number_input("Fabric Standard Length", min_value=0.0, step=0.5)
 
-col_btn1, col_btn2 = st.columns(2)
+    if st.button("Add Supplier Data"):
+        if supplier_name_input == "":
+            st.warning("Please enter a Supplier name.")
+        else:
+            new_row = pd.DataFrame([{
+                "Supplier": supplier_name_input,
+                "Profile Type": selected_profile_type,
+                "Fabric Standard Length": fabric_standard_length_input
+            }])
 
-with col_btn1:
-    if st.button("Add"):
-        st.session_state.rows.append(current_data.copy())
-        st.success("Row added.")
+            supplier_df = supplier_df[
+                ~(
+                    (supplier_df["Supplier"].astype(str).str.strip() == supplier_name_input) &
+                    (supplier_df["Profile Type"].astype(str).str.strip() == selected_profile_type)
+                )
+            ]
 
-with col_btn2:
-    if st.button("Clear Screen"):
-        st.session_state.rows = []
-        st.success("Current screen cleared.")
+            supplier_df = pd.concat([supplier_df, new_row], ignore_index=True)
+            save_supplier_data(supplier_df, st.session_state.active_project or DEFAULT_PROJECT_NAME)
+            st.success("Supplier data saved.")
+            supplier_df = load_supplier_data(st.session_state.active_project or DEFAULT_PROJECT_NAME)
+
+    if not supplier_df.empty:
+        st.dataframe(supplier_df, use_container_width=True, hide_index=True)
 
 st.subheader("Detail Results")
 
@@ -452,15 +481,13 @@ if st.session_state.rows:
     recalculated_rows = []
     for _, row_item in edited_df.iterrows():
         row_dict = row_item.to_dict()
-        row_dict["Project Name"] = st.session_state.active_project or DEFAULT_PROJECT_NAME
-        row_dict["BOQ Article"] = st.session_state.loaded_boq
+        row_dict["Project Name"] = row_dict.get("Project Name", st.session_state.active_project or DEFAULT_PROJECT_NAME)
+        row_dict["BOQ Article"] = row_dict.get("BOQ Article", st.session_state.loaded_boq)
         row_dict = calculate_row(row_dict, df)
         recalculated_rows.append(row_dict)
 
     recalculated_df = pd.DataFrame(recalculated_rows).fillna(0)
     st.session_state.rows = recalculated_df.to_dict("records")
-
-    st.dataframe(recalculated_df, use_container_width=True, hide_index=True)
 
     st.subheader("Summary by Floor")
     summary_df = recalculated_df.groupby(
@@ -483,118 +510,78 @@ if st.session_state.rows:
 
     st.dataframe(profile_summary_df, use_container_width=True, hide_index=True)
 
-    st.subheader("Fab Setup")
+    st.subheader("Waste Calculation")
 
-    fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
+    supplier_df = load_supplier_data(st.session_state.active_project or DEFAULT_PROJECT_NAME)
+    supplier_options = sorted(supplier_df["Supplier"].dropna().astype(str).str.strip().unique().tolist())
 
-    fc1, fc2, fc3 = st.columns(3)
+    if supplier_options:
+        selected_supplier = st.selectbox("Select Supplier", supplier_options)
 
-    with fc1:
-        supply_name_input = st.text_input("Supply").strip()
+        waste_df = profile_summary_df.copy()
+        waste_df["Profile Type"] = waste_df["Profile"].apply(get_profile_type)
 
-    with fc2:
-        selected_profile_type = st.selectbox("Profile Type", profile_type_options)
-
-    with fc3:
-        fabric_standard_length_input = st.number_input("Fab Length", min_value=0.0, step=0.5)
-
-    if st.button("Add Fab"):
-        if supply_name_input == "":
-            st.warning("Please enter a Supply name.")
-        else:
-            new_row = pd.DataFrame([{
-                "Supply": supply_name_input,
-                "Profile Type": selected_profile_type,
-                "Fabric Standard Length": fabric_standard_length_input
-            }])
-
-            fabric_df = fabric_df[
-                ~(
-                    (fabric_df["Supply"].astype(str).str.strip() == supply_name_input) &
-                    (fabric_df["Profile Type"].astype(str).str.strip() == selected_profile_type)
-                )
-            ]
-
-            fabric_df = pd.concat([fabric_df, new_row], ignore_index=True)
-            save_fabric_standards(fabric_df, st.session_state.active_project or DEFAULT_PROJECT_NAME)
-            st.success("Fab data saved.")
-            fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
-
-    if not fabric_df.empty:
-        st.dataframe(fabric_df, use_container_width=True, hide_index=True)
-
-    st.subheader("Fab Waste")
-
-    fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
-    supply_options = sorted(fabric_df["Supply"].dropna().astype(str).str.strip().unique().tolist())
-
-    if supply_options:
-        selected_supply = st.selectbox("Select Supply", supply_options)
-
-        fab_waste_df = profile_summary_df.copy()
-        fab_waste_df["Profile Type"] = fab_waste_df["Profile"].apply(get_profile_type)
-
-        fab_waste_df["Fab Length"] = fab_waste_df["Profile Type"].apply(
+        waste_df["Fabric Standard Length"] = waste_df["Profile Type"].apply(
             lambda pt: to_float(
-                get_fabric_row(pt, selected_supply, fabric_df)["Fabric Standard Length"],
+                get_supplier_row(pt, selected_supplier, supplier_df)["Fabric Standard Length"],
                 0.0
-            ) if get_fabric_row(pt, selected_supply, fabric_df) is not None else 0.0
+            ) if get_supplier_row(pt, selected_supplier, supplier_df) is not None else 0.0
         )
 
-        fab_waste_df["Fab Qty"] = fab_waste_df.apply(
-            lambda row: math.ceil(row["Total Length"] / row["Fab Length"])
-            if to_float(row["Fab Length"]) > 0 else 0,
+        waste_df["Supplier Qty"] = waste_df.apply(
+            lambda row: math.ceil(row["Total Length"] / row["Fabric Standard Length"])
+            if to_float(row["Fabric Standard Length"]) > 0 else 0,
             axis=1
         )
 
-        fab_waste_df["kg/m"] = fab_waste_df["Profile"].apply(
+        waste_df["kg/m"] = waste_df["Profile"].apply(
             lambda p: to_float(
                 df[df["Profile"].astype(str).str.strip() == str(p).strip()].iloc[0]["kgm"],
                 0.0
             ) if not df[df["Profile"].astype(str).str.strip() == str(p).strip()].empty else 0.0
         )
 
-        fab_waste_df["Waste Length"] = fab_waste_df.apply(
+        waste_df["Waste Length"] = waste_df.apply(
             lambda row: round(
-                row["Fab Qty"] * row["Fab Length"] - row["Total Length"], 2
-            ) if to_float(row["Fab Length"]) > 0 else 0.0,
+                row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Length"], 2
+            ) if to_float(row["Fabric Standard Length"]) > 0 else 0.0,
             axis=1
         )
 
-        fab_waste_df["Waste Weight"] = fab_waste_df.apply(
+        waste_df["Waste Weight"] = waste_df.apply(
             lambda row: round(row["Waste Length"] * row["kg/m"], 2),
             axis=1
         )
 
-        fab_waste_df = fab_waste_df[
-            ["Profile", "Fab Length", "Fab Qty", "Waste Length", "Waste Weight"]
+        waste_df = waste_df[
+            ["Profile", "Fabric Standard Length", "Supplier Qty", "Waste Length", "Waste Weight"]
         ].fillna(0)
 
-        total_waste_weight = round(fab_waste_df["Waste Weight"].sum(), 2)
+        total_waste_weight = round(waste_df["Waste Weight"].sum(), 2)
 
         total_row = pd.DataFrame([{
             "Profile": "",
-            "Fab Length": "",
-            "Fab Qty": "",
+            "Fabric Standard Length": "",
+            "Supplier Qty": "",
             "Waste Length": "Total",
             "Waste Weight": total_waste_weight
         }])
 
-        fab_waste_display = pd.concat([fab_waste_df, total_row], ignore_index=True)
+        waste_display = pd.concat([waste_df, total_row], ignore_index=True)
 
-        st.dataframe(fab_waste_display, use_container_width=True, hide_index=True)
+        st.dataframe(waste_display, use_container_width=True, hide_index=True)
 
     else:
-        fab_waste_df = pd.DataFrame(columns=["Profile", "Fab Length", "Fab Qty", "Waste Length", "Waste Weight"])
+        waste_df = pd.DataFrame(columns=["Profile", "Fabric Standard Length", "Supplier Qty", "Waste Length", "Waste Weight"])
         total_waste_weight = 0.0
-        st.info("Add Fab Setup data first.")
+        st.info("Add Supplier Data first.")
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         recalculated_df.to_excel(writer, index=False, sheet_name="Detail Results")
         summary_df.to_excel(writer, index=False, sheet_name="Summary by Floor")
         profile_summary_df.to_excel(writer, index=False, sheet_name="Profile Sum")
-        fab_waste_df.to_excel(writer, index=False, sheet_name="Fab Waste")
+        waste_df.to_excel(writer, index=False, sheet_name="Waste Calculation")
 
         total_waste_df = pd.DataFrame({
             "Item": ["Total Waste Weight"],
