@@ -220,8 +220,8 @@ def calculate_row(row_data, profile_df):
 
     profile_row = profile_match.iloc[0]
 
-    original_length = to_float(row_data.get("Length", 0))
-    original_number = to_float(row_data.get("Number", 0))
+    original_length = to_float(row_data.get("Original Length", row_data.get("Length", 0)))
+    original_number = to_float(row_data.get("Input Number", row_data.get("Number", 0)))
     price_per_ton = to_float(row_data.get("Price/t", 0))
 
     calc_length, calc_number, split_pieces = split_length_and_quantity(
@@ -240,6 +240,8 @@ def calculate_row(row_data, profile_df):
     total_zbsl = zbsl * calc_number
     total_price = (weight_incl_waste / 1000) * price_per_ton
 
+    row_data["Original Length"] = round(original_length, 2)
+    row_data["Input Number"] = int(original_number) if float(original_number).is_integer() else round(original_number, 2)
     row_data["Length"] = round(calc_length, 2)
     row_data["Number"] = int(calc_number) if float(calc_number).is_integer() else round(calc_number, 2)
     row_data["Split Pieces"] = int(split_pieces)
@@ -334,14 +336,14 @@ with top_row3:
     if st.button("Refresh", use_container_width=True):
         st.rerun()
 
-main_tabs = st.tabs(["File", "Model", "Edit", "Calculation"])
+main_tabs = st.tabs(["File", "Model", "Save", "Edit", "Calculation"])
 
 with main_tabs[0]:
     st.subheader("File")
 
     file_action = st.selectbox(
         "File Menu",
-        ["Select", "New Project", "Open Project", "Import Project", "Export Project", "Save Project", "Rename Project"],
+        ["Select", "New Project", "Open Project", "Import Project", "Export Project", "Rename Project"],
         key="file_menu_select"
     )
 
@@ -398,17 +400,6 @@ with main_tabs[0]:
         else:
             st.info("No data to export")
 
-    elif file_action == "Save Project":
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            save_name = st.text_input("Project Name", value=st.session_state.project_name, key="save_project_name")
-        with c2:
-            st.write("")
-            st.write("")
-            if st.button("Save Now"):
-                save_full_project(save_name)
-                st.success(f"Project saved: {st.session_state.project_name}")
-
     elif file_action == "Rename Project":
         c1, c2 = st.columns([2, 1])
         with c1:
@@ -455,9 +446,9 @@ with main_tabs[1]:
 
         c4, c5, c6 = st.columns(3)
         with c4:
-            input_length = st.number_input("Length (m)", min_value=0.0, step=0.1, format="%.2f", key="length_input")
+            input_length = st.number_input("Original Length (m)", min_value=0.0, step=0.1, format="%.2f", key="length_input")
         with c5:
-            input_quantity = st.number_input("Quantity", min_value=1, step=1, key="quantity_input")
+            input_quantity = st.number_input("Input Quantity", min_value=1, step=1, key="quantity_input")
         with c6:
             input_price_per_ton = st.number_input("Price per ton", min_value=0.0, step=10.0, format="%.2f", key="price_input")
 
@@ -467,6 +458,8 @@ with main_tabs[1]:
             "Floor Level": floor_level,
             "Sub Article": sub_article,
             "Profile": profile,
+            "Original Length": input_length,
+            "Input Number": input_quantity,
             "Length": input_length,
             "Number": input_quantity,
             "Price/t": input_price_per_ton,
@@ -493,12 +486,16 @@ with main_tabs[1]:
         with r4:
             st.number_input("Split Pieces", value=int(to_float(current_data["Split Pieces"], 1)), disabled=True)
         with r5:
-            st.number_input("Total Treatment Area", value=to_float(current_data["Total Treatment Area"]), disabled=True)
+            st.number_input("Calculated Length", value=to_float(current_data["Length"]), disabled=True)
         with r6:
-            st.number_input("Total ZBSL", value=to_float(current_data["Total ZBSL"]), disabled=True)
+            st.number_input("Calculated Number", value=to_float(current_data["Number"]), disabled=True)
 
-        r7 = st.columns(1)[0]
+        r7, r8, r9 = st.columns(3)
         with r7:
+            st.number_input("Total Treatment Area", value=to_float(current_data["Total Treatment Area"]), disabled=True)
+        with r8:
+            st.number_input("Total ZBSL", value=to_float(current_data["Total ZBSL"]), disabled=True)
+        with r9:
             st.number_input("Total Levering Price", value=to_float(current_data["Total Levering Price"]), disabled=True)
 
         b1, b2 = st.columns(2)
@@ -611,7 +608,7 @@ with main_tabs[1]:
 
         expected_columns = [
             "Project Name", "BOQ Article", "Floor Level", "Sub Article", "Profile",
-            "Length", "Number", "Price/t", "Split Pieces", "kg/m",
+            "Original Length", "Input Number", "Length", "Number", "Price/t", "Split Pieces", "kg/m",
             "Total Treatment Area", "Net Weight", "Weight Incl. Waste",
             "Total ZBSL", "Total Levering Price"
         ]
@@ -635,17 +632,21 @@ with main_tabs[1]:
 
         summary_df = recalculated_df.groupby(
             ["Floor Level", "Sub Article"], as_index=False
-        )[["Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
+        )[["Input Number", "Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
 
         profile_summary_df = recalculated_df.groupby("Profile", as_index=False).agg({
+            "Original Length": "sum",
             "Length": "sum",
+            "Input Number": "sum",
             "Number": "sum",
             "Weight Incl. Waste": "sum"
         })
 
         profile_summary_df = profile_summary_df.rename(columns={
-            "Length": "Total Length",
-            "Number": "Total Number",
+            "Original Length": "Total Original Length",
+            "Length": "Total Calculated Length",
+            "Input Number": "Total Input Number",
+            "Number": "Total Calculated Number",
             "Weight Incl. Waste": "Total Weight"
         })
 
@@ -664,7 +665,7 @@ with main_tabs[1]:
             )
 
             waste_df["Supplier Qty"] = waste_df.apply(
-                lambda row: math.ceil(row["Total Length"] / row["Fabric Standard Length"])
+                lambda row: math.ceil(row["Total Calculated Length"] / row["Fabric Standard Length"])
                 if to_float(row["Fabric Standard Length"]) > 0 else 0,
                 axis=1
             )
@@ -678,7 +679,7 @@ with main_tabs[1]:
 
             waste_df["Waste Length"] = waste_df.apply(
                 lambda row: round(
-                    row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Length"], 2
+                    row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Calculated Length"], 2
                 ) if to_float(row["Fabric Standard Length"]) > 0 else 0.0,
                 axis=1
             )
@@ -705,7 +706,20 @@ with main_tabs[1]:
                     use_container_width=True,
                     hide_index=True,
                     num_rows="dynamic",
-                    key="detail_editor"
+                    key="detail_editor",
+                    column_config={
+                        "Original Length": st.column_config.NumberColumn("Original Length", step=0.1, format="%.2f"),
+                        "Input Number": st.column_config.NumberColumn("Input Number", step=1),
+                        "Length": st.column_config.NumberColumn("Calculated Length", disabled=True, format="%.2f"),
+                        "Number": st.column_config.NumberColumn("Calculated Number", disabled=True),
+                        "Split Pieces": st.column_config.NumberColumn("Split Pieces", disabled=True),
+                        "kg/m": st.column_config.NumberColumn("kg/m", disabled=True, format="%.2f"),
+                        "Total Treatment Area": st.column_config.NumberColumn("Total Treatment Area", disabled=True, format="%.2f"),
+                        "Net Weight": st.column_config.NumberColumn("Net Weight", disabled=True, format="%.2f"),
+                        "Weight Incl. Waste": st.column_config.NumberColumn("Weight Incl. Waste", disabled=True, format="%.2f"),
+                        "Total ZBSL": st.column_config.NumberColumn("Total ZBSL", disabled=True, format="%.2f"),
+                        "Total Levering Price": st.column_config.NumberColumn("Total Levering Price", disabled=True, format="%.2f"),
+                    }
                 )
                 st.session_state["edited_detail_df"] = edited_df.copy()
             else:
@@ -758,6 +772,25 @@ with main_tabs[1]:
             st.info("Open a supplier and add supplier data first.")
 
 with main_tabs[2]:
+    st.subheader("Save")
+
+    c1, c2 = st.columns([2, 1])
+
+    with c1:
+        save_name = st.text_input(
+            "Project Name",
+            value=st.session_state.project_name,
+            key="save_project_name_top"
+        )
+
+    with c2:
+        st.write("")
+        st.write("")
+        if st.button("Save Now"):
+            save_full_project(save_name)
+            st.success(f"Project saved: {st.session_state.project_name}")
+
+with main_tabs[3]:
     st.subheader("Edit")
 
     c1, c2, c3 = st.columns(3)
@@ -794,7 +827,7 @@ with main_tabs[2]:
 
             st.success("Edited data saved")
 
-with main_tabs[3]:
+with main_tabs[4]:
     st.subheader("Calculation")
 
     calc_action = st.selectbox(
@@ -811,15 +844,19 @@ if st.session_state.rows:
 
     export_summary_df = export_detail_df.groupby(
         ["Floor Level", "Sub Article"], as_index=False
-    )[["Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
+    )[["Input Number", "Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
 
     export_profile_sum_df = export_detail_df.groupby("Profile", as_index=False).agg({
+        "Original Length": "sum",
         "Length": "sum",
+        "Input Number": "sum",
         "Number": "sum",
         "Weight Incl. Waste": "sum"
     }).rename(columns={
-        "Length": "Total Length",
-        "Number": "Total Number",
+        "Original Length": "Total Original Length",
+        "Length": "Total Calculated Length",
+        "Input Number": "Total Input Number",
+        "Number": "Total Calculated Number",
         "Weight Incl. Waste": "Total Weight"
     })
 
@@ -841,7 +878,7 @@ if st.session_state.rows:
         )
 
         export_waste_df["Supplier Qty"] = export_waste_df.apply(
-            lambda row: math.ceil(row["Total Length"] / row["Fabric Standard Length"])
+            lambda row: math.ceil(row["Total Calculated Length"] / row["Fabric Standard Length"])
             if to_float(row["Fabric Standard Length"]) > 0 else 0,
             axis=1
         )
@@ -855,7 +892,7 @@ if st.session_state.rows:
 
         export_waste_df["Waste Length"] = export_waste_df.apply(
             lambda row: round(
-                row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Length"], 2
+                row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Calculated Length"], 2
             ) if to_float(row["Fabric Standard Length"]) > 0 else 0.0,
             axis=1
         )
