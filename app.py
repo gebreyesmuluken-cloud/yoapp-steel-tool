@@ -17,7 +17,6 @@ st.markdown("""
     overflow-x: auto;
     gap: 6px;
 }
-
 .stTabs [data-baseweb="tab"] {
     padding: 6px 10px !important;
     font-size: 14px !important;
@@ -190,7 +189,6 @@ def get_supplier_row(profile_type, supplier_df):
 def rename_project_file(old_name, new_name):
     old_results = get_project_results_file(old_name)
     new_results = get_project_results_file(new_name)
-
     if old_results.exists():
         old_results.rename(new_results)
 
@@ -257,15 +255,13 @@ def calculate_row(row_data, profile_df):
 
 
 def save_results(rows, project_name):
-    results_file = get_project_results_file(project_name)
-    pd.DataFrame(rows).to_excel(results_file, index=False)
+    pd.DataFrame(rows).to_excel(get_project_results_file(project_name), index=False)
 
 
 def load_saved_results(project_name):
     results_file = get_project_results_file(project_name)
     if results_file.exists():
-        saved_df = pd.read_excel(results_file).fillna("")
-        return saved_df.to_dict("records")
+        return pd.read_excel(results_file).fillna("").to_dict("records")
     return []
 
 
@@ -290,8 +286,7 @@ def open_full_project(project_name):
     st.session_state.project_name = final_name
 
     if st.session_state.rows:
-        first_row = st.session_state.rows[0]
-        st.session_state.boq_article = str(first_row.get("BOQ Article", ""))
+        st.session_state.boq_article = str(st.session_state.rows[0].get("BOQ Article", ""))
     else:
         st.session_state.boq_article = ""
 
@@ -307,16 +302,12 @@ sub_article_options = ["Beam", "Column", "Brace", "Plate", "Connection"]
 
 if "edit_mode" not in st.session_state:
     st.session_state.edit_mode = False
-
 if "rows" not in st.session_state:
     st.session_state.rows = []
-
 if "project_name" not in st.session_state:
     st.session_state.project_name = DEFAULT_PROJECT_NAME
-
 if "boq_article" not in st.session_state:
     st.session_state.boq_article = ""
-
 if "selected_supplier" not in st.session_state:
     st.session_state.selected_supplier = ""
 
@@ -328,17 +319,17 @@ with main_tabs[0]:
     file_action = st.selectbox(
         "File Menu",
         ["Select", "New Project", "Open Project", "Import Project", "Export Project", "Rename Project"],
-        key="file_menu_select"
+        key="file_menu_select_main"
     )
 
     if file_action == "New Project":
         c1, c2 = st.columns([2, 1])
         with c1:
-            new_project_name = st.text_input("New Project Name", value=DEFAULT_PROJECT_NAME, key="new_project_name")
+            new_project_name = st.text_input("New Project Name", value=DEFAULT_PROJECT_NAME, key="file_new_project_name_input")
         with c2:
             st.write("")
             st.write("")
-            if st.button("Create New Project", key="btn_create_new_project"):
+            if st.button("Create New Project", key="file_create_new_project_btn"):
                 st.session_state.rows = []
                 st.session_state.project_name = safe_project_name(new_project_name)
                 st.session_state.boq_article = ""
@@ -353,16 +344,16 @@ with main_tabs[0]:
         selected_project = st.selectbox(
             "Select Project",
             existing_projects if existing_projects else [DEFAULT_PROJECT_NAME],
-            key="open_project_select"
+            key="file_open_project_select"
         )
 
-        if st.button("Open Selected Project", key="btn_open_selected_project"):
+        if st.button("Open Selected Project", key="file_open_selected_project_btn"):
             open_full_project(selected_project)
             st.success(f"Opened: {st.session_state.project_name}")
             st.rerun()
 
     elif file_action == "Import Project":
-        import_file = st.file_uploader("Import Excel Project", type=["xlsx"], key="import_project_file")
+        import_file = st.file_uploader("Import Excel Project", type=["xlsx"], key="file_import_project_uploader")
         if import_file is not None:
             imported_df = pd.read_excel(import_file).fillna("")
             st.session_state.rows = imported_df.to_dict("records")
@@ -380,7 +371,7 @@ with main_tabs[0]:
                 data=export_df.to_csv(index=False).encode("utf-8"),
                 file_name=f"{safe_project_name(st.session_state.project_name)}.csv",
                 mime="text/csv",
-                key="btn_export_project_csv"
+                key="file_export_project_btn"
             )
         else:
             st.info("No data to export")
@@ -388,20 +379,18 @@ with main_tabs[0]:
     elif file_action == "Rename Project":
         c1, c2 = st.columns([2, 1])
         with c1:
-            rename_to = st.text_input("Rename To", key="rename_to_project")
+            rename_to = st.text_input("Rename To", key="file_rename_to_input")
         with c2:
             st.write("")
             st.write("")
-            if st.button("Rename Now", key="btn_rename_project"):
+            if st.button("Rename Now", key="file_rename_now_btn"):
                 if rename_to.strip():
                     old_name = st.session_state.project_name
                     new_name = safe_project_name(rename_to.strip())
                     rename_project_file(old_name, new_name)
                     st.session_state.project_name = new_name
-
                     for i in range(len(st.session_state.rows)):
                         st.session_state.rows[i]["Project Name"] = new_name
-
                     st.success(f"Project renamed to: {new_name}")
                     st.rerun()
 
@@ -418,24 +407,24 @@ with main_tabs[1]:
     ])
 
     with model_tabs[0]:
-        st.text_input("Project Name", value=st.session_state.project_name, disabled=True, key="model_project_name_display")
-        st.session_state.boq_article = st.text_input("BOQ Article", value=st.session_state.boq_article, key="model_boq_article_input")
+        st.text_input("Project Name Display", value=st.session_state.project_name, disabled=True, key="model_project_name_display_unique")
+        st.session_state.boq_article = st.text_input("BOQ Article Input", value=st.session_state.boq_article, key="model_boq_article_input_unique")
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            floor_level = st.selectbox("Floor Level", floor_options, key="floor_input")
+            floor_level = st.selectbox("Floor Level", floor_options, key="model_floor_level_select")
         with c2:
-            sub_article = st.selectbox("Sub Article", sub_article_options, key="sub_article_input")
+            sub_article = st.selectbox("Sub Article", sub_article_options, key="model_sub_article_select")
         with c3:
-            profile = st.selectbox("Profile", profile_list, key="profile_input")
+            profile = st.selectbox("Profile", profile_list, key="model_profile_select")
 
         c4, c5, c6 = st.columns(3)
         with c4:
-            input_length = st.number_input("Original Length (m)", min_value=0.0, step=0.1, format="%.2f", key="length_input")
+            input_length = st.number_input("Original Length (m)", min_value=0.0, step=0.1, format="%.2f", key="model_original_length_input")
         with c5:
-            input_quantity = st.number_input("Input Quantity", min_value=1, step=1, key="quantity_input")
+            input_quantity = st.number_input("Input Quantity", min_value=1, step=1, key="model_input_quantity_input")
         with c6:
-            input_price_per_ton = st.number_input("Price per ton", min_value=0.0, step=10.0, format="%.2f", key="price_input")
+            input_price_per_ton = st.number_input("Price per ton", min_value=0.0, step=10.0, format="%.2f", key="model_price_per_ton_input")
 
         current_data = {
             "Project Name": st.session_state.project_name,
@@ -461,35 +450,35 @@ with main_tabs[1]:
 
         r1, r2, r3 = st.columns(3)
         with r1:
-            st.number_input("kg/m", value=to_float(current_data["kg/m"]), disabled=True, key="calc_kgm_display")
+            st.number_input("kg per meter", value=to_float(current_data["kg/m"]), disabled=True, key="model_calc_kgm_display")
         with r2:
-            st.number_input("Net Weight", value=to_float(current_data["Net Weight"]), disabled=True, key="calc_net_weight_display")
+            st.number_input("Net Weight Display", value=to_float(current_data["Net Weight"]), disabled=True, key="model_calc_net_weight_display")
         with r3:
-            st.number_input("Weight Incl. Waste", value=to_float(current_data["Weight Incl. Waste"]), disabled=True, key="calc_weight_waste_display")
+            st.number_input("Weight Incl Waste Display", value=to_float(current_data["Weight Incl. Waste"]), disabled=True, key="model_calc_weight_waste_display")
 
         r4, r5, r6 = st.columns(3)
         with r4:
-            st.number_input("Split Pieces", value=int(to_float(current_data["Split Pieces"], 1)), disabled=True, key="calc_split_pieces_display")
+            st.number_input("Split Pieces Display", value=int(to_float(current_data["Split Pieces"], 1)), disabled=True, key="model_calc_split_pieces_display")
         with r5:
-            st.number_input("Calculated Length", value=to_float(current_data["Length"]), disabled=True, key="calc_length_display")
+            st.number_input("Calculated Length Display", value=to_float(current_data["Length"]), disabled=True, key="model_calc_length_display")
         with r6:
-            st.number_input("Calculated Number", value=to_float(current_data["Number"]), disabled=True, key="calc_number_display")
+            st.number_input("Calculated Number Display", value=to_float(current_data["Number"]), disabled=True, key="model_calc_number_display")
 
         r7, r8, r9 = st.columns(3)
         with r7:
-            st.number_input("Total Treatment Area", value=to_float(current_data["Total Treatment Area"]), disabled=True, key="calc_treatment_area_display")
+            st.number_input("Treatment Area Display", value=to_float(current_data["Total Treatment Area"]), disabled=True, key="model_calc_treatment_area_display")
         with r8:
-            st.number_input("Total ZBSL", value=to_float(current_data["Total ZBSL"]), disabled=True, key="calc_zbsl_display")
+            st.number_input("ZBSL Display", value=to_float(current_data["Total ZBSL"]), disabled=True, key="model_calc_zbsl_display")
         with r9:
-            st.number_input("Total Levering Price", value=to_float(current_data["Total Levering Price"]), disabled=True, key="calc_price_display")
+            st.number_input("Levering Price Display", value=to_float(current_data["Total Levering Price"]), disabled=True, key="model_calc_price_display")
 
         b1, b2 = st.columns(2)
         with b1:
-            if st.button("Add Row", key="btn_add_row"):
+            if st.button("Add Row", key="model_add_row_btn"):
                 st.session_state.rows.append(current_data.copy())
                 st.success("Row added")
         with b2:
-            if st.button("Clear Rows", key="btn_clear_rows"):
+            if st.button("Clear Rows", key="model_clear_rows_btn"):
                 st.session_state.rows = []
                 st.success("Rows cleared")
 
@@ -503,21 +492,21 @@ with main_tabs[1]:
             selected_supplier_name = st.selectbox(
                 "Select Supplier",
                 supplier_names if supplier_names else [],
-                key="selected_supplier_name_box"
+                key="supplier_select_supplier_box"
             ) if supplier_names else ""
         with s1:
-            new_supplier_name = st.text_input("New Supplier Name", key="new_supplier_name")
+            new_supplier_name = st.text_input("New Supplier Name", key="supplier_new_supplier_name_input")
 
         o1, o2 = st.columns(2)
         with o1:
-            if st.button("Open Supplier", key="btn_open_supplier"):
+            if st.button("Open Supplier", key="supplier_open_supplier_btn"):
                 if selected_supplier_name:
                     st.session_state.selected_supplier = selected_supplier_name
                     st.success(f"Opened supplier: {selected_supplier_name}")
                     st.rerun()
 
         with o2:
-            if st.button("Create Supplier", key="btn_create_supplier"):
+            if st.button("Create Supplier", key="supplier_create_supplier_btn"):
                 if new_supplier_name.strip():
                     supplier_name = safe_name(new_supplier_name.strip())
                     empty_df = pd.DataFrame(columns=["Supplier", "Profile Type", "Fabric Standard Length"])
@@ -529,19 +518,19 @@ with main_tabs[1]:
         active_supplier = st.session_state.get("selected_supplier", "")
 
         if active_supplier:
-            st.text_input("Active Supplier", value=active_supplier, disabled=True, key="active_supplier_display")
+            st.text_input("Active Supplier Display", value=active_supplier, disabled=True, key="supplier_active_supplier_display_unique")
 
             supplier_df = load_supplier_data_by_name(active_supplier)
 
             s2, s3, s4 = st.columns(3)
             with s2:
-                selected_profile_type = st.selectbox("Profile Type", profile_type_options, key="supplier_profile_type")
+                selected_profile_type = st.selectbox("Supplier Profile Type", profile_type_options, key="supplier_profile_type_select")
             with s3:
-                fabric_standard_length_input = st.number_input("Fabric Standard Length", min_value=0.0, step=0.5, key="supplier_fabric_length")
+                fabric_standard_length_input = st.number_input("Supplier Fabric Standard Length", min_value=0.0, step=0.5, key="supplier_fabric_length_input")
             with s4:
                 st.write("")
                 st.write("")
-                if st.button("Add Supplier Data", key="btn_add_supplier_data"):
+                if st.button("Add Supplier Data", key="supplier_add_supplier_data_btn"):
                     new_row = pd.DataFrame([{
                         "Supplier": active_supplier,
                         "Profile Type": selected_profile_type,
@@ -563,13 +552,13 @@ with main_tabs[1]:
                     use_container_width=True,
                     hide_index=True,
                     num_rows="dynamic",
-                    key="supplier_editor"
+                    key="supplier_editor_data_editor"
                 )
                 st.session_state["edited_supplier_df"] = edited_supplier_df.copy()
             else:
                 st.dataframe(supplier_df, use_container_width=True, hide_index=True)
 
-            if st.button("Save Supplier Changes", key="btn_save_supplier_changes"):
+            if st.button("Save Supplier Changes", key="supplier_save_changes_btn"):
                 if st.session_state.edit_mode and "edited_supplier_df" in st.session_state:
                     save_df = st.session_state["edited_supplier_df"].copy()
                 else:
@@ -690,7 +679,7 @@ with main_tabs[1]:
                     use_container_width=True,
                     hide_index=True,
                     num_rows="dynamic",
-                    key="detail_editor",
+                    key="detail_results_editor",
                     column_config={
                         "Original Length": st.column_config.NumberColumn("Original Length", step=0.1, format="%.2f"),
                         "Input Number": st.column_config.NumberColumn("Input Number", step=1),
@@ -715,7 +704,7 @@ with main_tabs[1]:
         st.subheader("Summary by Floor")
         if not summary_df.empty:
             if st.session_state.edit_mode:
-                st.data_editor(summary_df, use_container_width=True, hide_index=True, num_rows="dynamic", key="summary_editor")
+                st.data_editor(summary_df, use_container_width=True, hide_index=True, num_rows="dynamic", key="summary_floor_editor")
             else:
                 st.dataframe(summary_df, use_container_width=True, hide_index=True)
         else:
@@ -725,7 +714,7 @@ with main_tabs[1]:
         st.subheader("Profile Sum")
         if not profile_summary_df.empty:
             if st.session_state.edit_mode:
-                st.data_editor(profile_summary_df, use_container_width=True, hide_index=True, num_rows="dynamic", key="profile_sum_editor")
+                st.data_editor(profile_summary_df, use_container_width=True, hide_index=True, num_rows="dynamic", key="profile_sum_editor_unique")
             else:
                 st.dataframe(profile_summary_df, use_container_width=True, hide_index=True)
         else:
@@ -735,7 +724,7 @@ with main_tabs[1]:
         st.subheader("Waste Calculation")
         active_supplier = st.session_state.get("selected_supplier", "")
         if active_supplier:
-            st.text_input("Selected Supplier for Waste", value=active_supplier, disabled=True, key="selected_supplier_waste_display")
+            st.text_input("Waste Supplier Display", value=active_supplier, disabled=True, key="waste_supplier_display_unique")
 
         if not waste_df.empty:
             total_row = pd.DataFrame([{
@@ -749,7 +738,7 @@ with main_tabs[1]:
             waste_display = pd.concat([waste_df, total_row], ignore_index=True)
 
             if st.session_state.edit_mode:
-                st.data_editor(waste_display, use_container_width=True, hide_index=True, num_rows="dynamic", key="waste_editor")
+                st.data_editor(waste_display, use_container_width=True, hide_index=True, num_rows="dynamic", key="waste_editor_unique")
             else:
                 st.dataframe(waste_display, use_container_width=True, hide_index=True)
         else:
@@ -761,17 +750,17 @@ with main_tabs[2]:
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        if st.button("Enable Edit", key="btn_enable_edit"):
+        if st.button("Enable Edit", key="edit_enable_btn"):
             st.session_state.edit_mode = True
             st.success("Edit mode ON")
 
     with c2:
-        if st.button("Disable Edit", key="btn_disable_edit"):
+        if st.button("Disable Edit", key="edit_disable_btn"):
             st.session_state.edit_mode = False
             st.success("Edit mode OFF")
 
     with c3:
-        if st.button("Save Changes", key="btn_save_changes"):
+        if st.button("Save Changes", key="edit_save_changes_btn"):
             if "edited_detail_df" in st.session_state:
                 edited_df = st.session_state["edited_detail_df"].copy()
                 recalculated_rows = []
@@ -795,16 +784,16 @@ with main_tabs[2]:
 with main_tabs[3]:
     st.subheader("Save")
 
-    st.text_input("Project Name", value=st.session_state.project_name, disabled=True, key="save_tab_project_name_display")
+    st.text_input("Save Project Display", value=st.session_state.project_name, disabled=True, key="save_project_display_unique")
 
-    if st.button("Save", use_container_width=True, key="btn_save_project"):
+    if st.button("Save", use_container_width=True, key="save_project_btn_unique"):
         save_full_project(st.session_state.project_name)
         st.success(f"Project saved: {st.session_state.project_name}")
 
 with main_tabs[4]:
     st.subheader("Refresh")
 
-    if st.button("Refresh", use_container_width=True, key="btn_refresh_app"):
+    if st.button("Refresh", use_container_width=True, key="refresh_app_btn_unique"):
         st.rerun()
 
 with main_tabs[5]:
@@ -813,7 +802,7 @@ with main_tabs[5]:
     calc_action = st.selectbox(
         "Calculation Menu",
         ["Select", "Connection", "Bolt", "Weld", "Plate", "Custom Code"],
-        key="calc_menu_select"
+        key="calc_menu_select_unique"
     )
 
     if calc_action != "Select":
@@ -908,5 +897,5 @@ if st.session_state.rows:
         data=output,
         file_name=f"{safe_project_name(st.session_state.project_name)}_steel_results.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key="btn_export_excel"
+        key="export_excel_btn_unique"
     )
