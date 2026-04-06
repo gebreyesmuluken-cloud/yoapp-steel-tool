@@ -283,6 +283,13 @@ def save_full_project(project_name):
         rows_to_save.append(updated_row)
 
     save_results(rows_to_save, final_name)
+
+    if "edited_supplier_df" in st.session_state and st.session_state.selected_supplier:
+        save_df = st.session_state["edited_supplier_df"].copy()
+        if not save_df.empty:
+            save_df["Supplier"] = st.session_state.selected_supplier
+        save_supplier_data_by_name(st.session_state.selected_supplier, save_df)
+
     st.session_state.project_name = final_name
     st.session_state.rows = rows_to_save
 
@@ -307,8 +314,6 @@ profile_type_options = sorted(df["Profile Type"].dropna().astype(str).unique().t
 floor_options = ["Ground Floor", "First Floor", "Second Floor", "Third Floor", "Fourth Floor"]
 sub_article_options = ["Beam", "Column", "Brace", "Plate", "Connection"]
 
-if "edit_mode" not in st.session_state:
-    st.session_state.edit_mode = False
 if "rows" not in st.session_state:
     st.session_state.rows = []
 if "project_name" not in st.session_state:
@@ -318,7 +323,7 @@ if "boq_article" not in st.session_state:
 if "selected_supplier" not in st.session_state:
     st.session_state.selected_supplier = ""
 
-main_tabs = st.tabs(["File", "Model", "Edit", "Save", "Refresh", "Calculation"])
+main_tabs = st.tabs(["File", "Model", "Save", "Refresh", "Calculation"])
 
 with main_tabs[0]:
     st.subheader("File")
@@ -412,9 +417,17 @@ with main_tabs[1]:
         "Waste Calculation"
     ])
 
+    recalculated_df = pd.DataFrame()
+    summary_df = pd.DataFrame()
+    profile_summary_df = pd.DataFrame()
+    waste_df = pd.DataFrame()
+    total_waste_weight = 0.0
+
     with model_tabs[0]:
         saved_projects = get_saved_project_names()
         project_options = saved_projects if saved_projects else [st.session_state.project_name]
+        if st.session_state.project_name not in project_options:
+            project_options = [st.session_state.project_name] + project_options
 
         current_index = project_options.index(st.session_state.project_name) if st.session_state.project_name in project_options else 0
 
@@ -483,25 +496,25 @@ with main_tabs[1]:
         with r1:
             st.number_input("kg per meter", value=to_float(current_data["kg/m"]), disabled=True, key="model_calc_kgm_display")
         with r2:
-            st.number_input("Net Weight Display", value=to_float(current_data["Net Weight"]), disabled=True, key="model_calc_net_weight_display")
+            st.number_input("Net Weight", value=to_float(current_data["Net Weight"]), disabled=True, key="model_calc_net_weight_display")
         with r3:
-            st.number_input("Weight Incl Waste Display", value=to_float(current_data["Weight Incl. Waste"]), disabled=True, key="model_calc_weight_waste_display")
+            st.number_input("Weight Incl Waste", value=to_float(current_data["Weight Incl. Waste"]), disabled=True, key="model_calc_weight_waste_display")
 
         r4, r5, r6 = st.columns(3)
         with r4:
-            st.number_input("Split Pieces Display", value=int(to_float(current_data["Split Pieces"], 1)), disabled=True, key="model_calc_split_pieces_display")
+            st.number_input("Split Pieces", value=int(to_float(current_data["Split Pieces"], 1)), disabled=True, key="model_calc_split_pieces_display")
         with r5:
-            st.number_input("Calculated Length Display", value=to_float(current_data["Length"]), disabled=True, key="model_calc_length_display")
+            st.number_input("Calculated Length", value=to_float(current_data["Length"]), disabled=True, key="model_calc_length_display")
         with r6:
-            st.number_input("Calculated Number Display", value=to_float(current_data["Number"]), disabled=True, key="model_calc_number_display")
+            st.number_input("Calculated Number", value=to_float(current_data["Number"]), disabled=True, key="model_calc_number_display")
 
         r7, r8, r9 = st.columns(3)
         with r7:
-            st.number_input("Treatment Area Display", value=to_float(current_data["Total Treatment Area"]), disabled=True, key="model_calc_treatment_area_display")
+            st.number_input("Treatment Area", value=to_float(current_data["Total Treatment Area"]), disabled=True, key="model_calc_treatment_area_display")
         with r8:
-            st.number_input("ZBSL Display", value=to_float(current_data["Total ZBSL"]), disabled=True, key="model_calc_zbsl_display")
+            st.number_input("ZBSL", value=to_float(current_data["Total ZBSL"]), disabled=True, key="model_calc_zbsl_display")
         with r9:
-            st.number_input("Levering Price Display", value=to_float(current_data["Total Levering Price"]), disabled=True, key="model_calc_price_display")
+            st.number_input("Levering Price", value=to_float(current_data["Total Levering Price"]), disabled=True, key="model_calc_price_display")
 
         b1, b2 = st.columns(2)
         with b1:
@@ -549,7 +562,7 @@ with main_tabs[1]:
         active_supplier = st.session_state.get("selected_supplier", "")
 
         if active_supplier:
-            st.text_input("Active Supplier Display", value=active_supplier, disabled=True, key="supplier_active_supplier_display_unique")
+            st.text_input("Active Supplier", value=active_supplier, disabled=True, key="supplier_active_supplier_display_unique")
 
             supplier_df = load_supplier_data_by_name(active_supplier)
 
@@ -577,36 +590,16 @@ with main_tabs[1]:
                     st.success("Supplier data saved")
                     st.rerun()
 
-            if st.session_state.edit_mode:
-                edited_supplier_df = st.data_editor(
-                    supplier_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="dynamic",
-                    key="supplier_editor_data_editor"
-                )
-                st.session_state["edited_supplier_df"] = edited_supplier_df.copy()
-            else:
-                st.dataframe(supplier_df, use_container_width=True, hide_index=True)
-
-            if st.button("Save Supplier Changes", key="supplier_save_changes_btn"):
-                if st.session_state.edit_mode and "edited_supplier_df" in st.session_state:
-                    save_df = st.session_state["edited_supplier_df"].copy()
-                else:
-                    save_df = supplier_df.copy()
-
-                if not save_df.empty:
-                    save_df["Supplier"] = active_supplier
-                save_supplier_data_by_name(active_supplier, save_df)
-                st.success("Supplier changes saved")
+            edited_supplier_df = st.data_editor(
+                supplier_df,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="supplier_editor_data_editor"
+            )
+            st.session_state["edited_supplier_df"] = edited_supplier_df.copy()
         else:
             st.info("Create or open a supplier first.")
-
-    recalculated_df = pd.DataFrame()
-    summary_df = pd.DataFrame()
-    profile_summary_df = pd.DataFrame()
-    waste_df = pd.DataFrame()
-    total_waste_weight = 0.0
 
     if st.session_state.rows:
         detail_df = pd.DataFrame(st.session_state.rows)
@@ -624,195 +617,154 @@ with main_tabs[1]:
 
         detail_df = detail_df[expected_columns]
 
-        recalculated_rows = []
-        for _, row_item in detail_df.iterrows():
-            row_dict = row_item.to_dict()
-            row_dict["Project Name"] = st.session_state.project_name
-            row_dict["BOQ Article"] = st.session_state.boq_article
-            row_dict = calculate_row(row_dict, df)
-            recalculated_rows.append(row_dict)
+        with model_tabs[2]:
+            st.subheader("Detail Results")
 
-        recalculated_df = pd.DataFrame(recalculated_rows).fillna(0)
-        st.session_state.rows = recalculated_df.to_dict("records")
-
-        summary_df = recalculated_df.groupby(
-            ["Floor Level", "Sub Article"], as_index=False
-        )[["Input Number", "Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
-
-        profile_summary_df = recalculated_df.groupby("Profile", as_index=False).agg({
-            "Original Length": "sum",
-            "Length": "sum",
-            "Input Number": "sum",
-            "Number": "sum",
-            "Weight Incl. Waste": "sum"
-        })
-
-        profile_summary_df = profile_summary_df.rename(columns={
-            "Original Length": "Total Original Length",
-            "Length": "Total Calculated Length",
-            "Input Number": "Total Input Number",
-            "Number": "Total Calculated Number",
-            "Weight Incl. Waste": "Total Weight"
-        })
-
-        active_supplier = st.session_state.get("selected_supplier", "")
-        supplier_df = load_supplier_data_by_name(active_supplier) if active_supplier else pd.DataFrame()
-
-        if active_supplier and not supplier_df.empty:
-            waste_df = profile_summary_df.copy()
-            waste_df["Profile Type"] = waste_df["Profile"].apply(get_profile_type)
-
-            waste_df["Fabric Standard Length"] = waste_df["Profile Type"].apply(
-                lambda pt: to_float(
-                    get_supplier_row(pt, supplier_df)["Fabric Standard Length"],
-                    0.0
-                ) if get_supplier_row(pt, supplier_df) is not None else 0.0
+            edited_df = st.data_editor(
+                detail_df,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="detail_results_editor",
+                column_config={
+                    "Original Length": st.column_config.NumberColumn("Original Length", step=0.1, format="%.2f"),
+                    "Input Number": st.column_config.NumberColumn("Input Number", step=1),
+                    "Length": st.column_config.NumberColumn("Calculated Length", disabled=True, format="%.2f"),
+                    "Number": st.column_config.NumberColumn("Calculated Number", disabled=True),
+                    "Split Pieces": st.column_config.NumberColumn("Split Pieces", disabled=True),
+                    "kg/m": st.column_config.NumberColumn("kg/m", disabled=True, format="%.2f"),
+                    "Total Treatment Area": st.column_config.NumberColumn("Total Treatment Area", disabled=True, format="%.2f"),
+                    "Net Weight": st.column_config.NumberColumn("Net Weight", disabled=True, format="%.2f"),
+                    "Weight Incl. Waste": st.column_config.NumberColumn("Weight Incl. Waste", disabled=True, format="%.2f"),
+                    "Total ZBSL": st.column_config.NumberColumn("Total ZBSL", disabled=True, format="%.2f"),
+                    "Total Levering Price": st.column_config.NumberColumn("Total Levering Price", disabled=True, format="%.2f"),
+                }
             )
 
-            waste_df["Supplier Qty"] = waste_df.apply(
-                lambda row: math.ceil(row["Total Calculated Length"] / row["Fabric Standard Length"])
-                if to_float(row["Fabric Standard Length"]) > 0 else 0,
-                axis=1
-            )
+            auto_recalc_rows = []
+            for _, row_item in edited_df.iterrows():
+                row_dict = row_item.to_dict()
+                row_dict["Project Name"] = st.session_state.project_name
+                row_dict["BOQ Article"] = st.session_state.boq_article
+                row_dict = calculate_row(row_dict, df)
+                auto_recalc_rows.append(row_dict)
 
-            waste_df["kg/m"] = waste_df["Profile"].apply(
-                lambda p: to_float(
-                    df[df["Profile"].astype(str).str.strip() == str(p).strip()].iloc[0]["kgm"],
-                    0.0
-                ) if not df[df["Profile"].astype(str).str.strip() == str(p).strip()].empty else 0.0
-            )
+            st.session_state.rows = auto_recalc_rows
+            recalculated_df = pd.DataFrame(auto_recalc_rows).fillna(0)
 
-            waste_df["Waste Length"] = waste_df.apply(
-                lambda row: round(
-                    row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Calculated Length"], 2
-                ) if to_float(row["Fabric Standard Length"]) > 0 else 0.0,
-                axis=1
-            )
+        if not recalculated_df.empty:
+            summary_df = recalculated_df.groupby(
+                ["Floor Level", "Sub Article"], as_index=False
+            )[["Input Number", "Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
 
-            waste_df["Waste Weight"] = waste_df.apply(
-                lambda row: round(row["Waste Length"] * row["kg/m"], 2),
-                axis=1
-            )
+            profile_summary_df = recalculated_df.groupby("Profile", as_index=False).agg({
+                "Original Length": "sum",
+                "Length": "sum",
+                "Input Number": "sum",
+                "Number": "sum",
+                "Weight Incl. Waste": "sum"
+            })
 
-            waste_df = waste_df[
-                ["Profile", "Fabric Standard Length", "Supplier Qty", "Waste Length", "Waste Weight"]
-            ].fillna(0)
-            total_waste_weight = round(waste_df["Waste Weight"].sum(), 2)
-        else:
-            waste_df = pd.DataFrame(columns=["Profile", "Fabric Standard Length", "Supplier Qty", "Waste Length", "Waste Weight"])
+            profile_summary_df = profile_summary_df.rename(columns={
+                "Original Length": "Total Original Length",
+                "Length": "Total Calculated Length",
+                "Input Number": "Total Input Number",
+                "Number": "Total Calculated Number",
+                "Weight Incl. Waste": "Total Weight"
+            })
 
-    with model_tabs[2]:
-        st.subheader("Detail Results")
-        if st.session_state.rows:
-            if st.session_state.edit_mode:
-                edited_df = st.data_editor(
-                    recalculated_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="dynamic",
-                    key="detail_results_editor",
-                    column_config={
-                        "Original Length": st.column_config.NumberColumn("Original Length", step=0.1, format="%.2f"),
-                        "Input Number": st.column_config.NumberColumn("Input Number", step=1),
-                        "Length": st.column_config.NumberColumn("Calculated Length", disabled=True, format="%.2f"),
-                        "Number": st.column_config.NumberColumn("Calculated Number", disabled=True),
-                        "Split Pieces": st.column_config.NumberColumn("Split Pieces", disabled=True),
-                        "kg/m": st.column_config.NumberColumn("kg/m", disabled=True, format="%.2f"),
-                        "Total Treatment Area": st.column_config.NumberColumn("Total Treatment Area", disabled=True, format="%.2f"),
-                        "Net Weight": st.column_config.NumberColumn("Net Weight", disabled=True, format="%.2f"),
-                        "Weight Incl. Waste": st.column_config.NumberColumn("Weight Incl. Waste", disabled=True, format="%.2f"),
-                        "Total ZBSL": st.column_config.NumberColumn("Total ZBSL", disabled=True, format="%.2f"),
-                        "Total Levering Price": st.column_config.NumberColumn("Total Levering Price", disabled=True, format="%.2f"),
-                    }
+            active_supplier = st.session_state.get("selected_supplier", "")
+            supplier_df = load_supplier_data_by_name(active_supplier) if active_supplier else pd.DataFrame()
+
+            if active_supplier and not supplier_df.empty:
+                waste_df = profile_summary_df.copy()
+                waste_df["Profile Type"] = waste_df["Profile"].apply(get_profile_type)
+
+                waste_df["Fabric Standard Length"] = waste_df["Profile Type"].apply(
+                    lambda pt: to_float(
+                        get_supplier_row(pt, supplier_df)["Fabric Standard Length"],
+                        0.0
+                    ) if get_supplier_row(pt, supplier_df) is not None else 0.0
                 )
-                st.session_state["edited_detail_df"] = edited_df.copy()
-            else:
-                st.dataframe(recalculated_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("No detail data")
 
-    with model_tabs[3]:
-        st.subheader("Summary by Floor")
-        if not summary_df.empty:
-            if st.session_state.edit_mode:
-                st.data_editor(summary_df, use_container_width=True, hide_index=True, num_rows="dynamic", key="summary_floor_editor")
-            else:
+                waste_df["Supplier Qty"] = waste_df.apply(
+                    lambda row: math.ceil(row["Total Calculated Length"] / row["Fabric Standard Length"])
+                    if to_float(row["Fabric Standard Length"]) > 0 else 0,
+                    axis=1
+                )
+
+                waste_df["kg/m"] = waste_df["Profile"].apply(
+                    lambda p: to_float(
+                        df[df["Profile"].astype(str).str.strip() == str(p).strip()].iloc[0]["kgm"],
+                        0.0
+                    ) if not df[df["Profile"].astype(str).str.strip() == str(p).strip()].empty else 0.0
+                )
+
+                waste_df["Waste Length"] = waste_df.apply(
+                    lambda row: round(
+                        row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Calculated Length"], 2
+                    ) if to_float(row["Fabric Standard Length"]) > 0 else 0.0,
+                    axis=1
+                )
+
+                waste_df["Waste Weight"] = waste_df.apply(
+                    lambda row: round(row["Waste Length"] * row["kg/m"], 2),
+                    axis=1
+                )
+
+                waste_df = waste_df[
+                    ["Profile", "Fabric Standard Length", "Supplier Qty", "Waste Length", "Waste Weight"]
+                ].fillna(0)
+                total_waste_weight = round(waste_df["Waste Weight"].sum(), 2)
+
+        with model_tabs[3]:
+            st.subheader("Summary by Floor")
+            if not summary_df.empty:
                 st.dataframe(summary_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("No summary yet")
-
-    with model_tabs[4]:
-        st.subheader("Profile Sum")
-        if not profile_summary_df.empty:
-            if st.session_state.edit_mode:
-                st.data_editor(profile_summary_df, use_container_width=True, hide_index=True, num_rows="dynamic", key="profile_sum_editor_unique")
             else:
+                st.info("No summary yet")
+
+        with model_tabs[4]:
+            st.subheader("Profile Sum")
+            if not profile_summary_df.empty:
                 st.dataframe(profile_summary_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("No profile sum yet")
-
-    with model_tabs[5]:
-        st.subheader("Waste Calculation")
-        active_supplier = st.session_state.get("selected_supplier", "")
-        if active_supplier:
-            st.text_input("Waste Supplier Display", value=active_supplier, disabled=True, key="waste_supplier_display_unique")
-
-        if not waste_df.empty:
-            total_row = pd.DataFrame([{
-                "Profile": "",
-                "Fabric Standard Length": "",
-                "Supplier Qty": "",
-                "Waste Length": "Total",
-                "Waste Weight": total_waste_weight
-            }])
-
-            waste_display = pd.concat([waste_df, total_row], ignore_index=True)
-
-            if st.session_state.edit_mode:
-                st.data_editor(waste_display, use_container_width=True, hide_index=True, num_rows="dynamic", key="waste_editor_unique")
             else:
+                st.info("No profile sum yet")
+
+        with model_tabs[5]:
+            st.subheader("Waste Calculation")
+            active_supplier = st.session_state.get("selected_supplier", "")
+            if active_supplier:
+                st.text_input("Waste Supplier", value=active_supplier, disabled=True, key="waste_supplier_display_unique")
+
+            if not waste_df.empty:
+                total_row = pd.DataFrame([{
+                    "Profile": "",
+                    "Fabric Standard Length": "",
+                    "Supplier Qty": "",
+                    "Waste Length": "Total",
+                    "Waste Weight": total_waste_weight
+                }])
+
+                waste_display = pd.concat([waste_df, total_row], ignore_index=True)
                 st.dataframe(waste_display, use_container_width=True, hide_index=True)
-        else:
+            else:
+                st.info("Open a supplier and add supplier data first.")
+    else:
+        with model_tabs[2]:
+            st.subheader("Detail Results")
+            st.info("No detail data")
+        with model_tabs[3]:
+            st.subheader("Summary by Floor")
+            st.info("No summary yet")
+        with model_tabs[4]:
+            st.subheader("Profile Sum")
+            st.info("No profile sum yet")
+        with model_tabs[5]:
+            st.subheader("Waste Calculation")
             st.info("Open a supplier and add supplier data first.")
 
 with main_tabs[2]:
-    st.subheader("Edit")
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        if st.button("Enable Edit", key="edit_enable_btn"):
-            st.session_state.edit_mode = True
-            st.success("Edit mode ON")
-
-    with c2:
-        if st.button("Disable Edit", key="edit_disable_btn"):
-            st.session_state.edit_mode = False
-            st.success("Edit mode OFF")
-
-    with c3:
-        if st.button("Save Changes", key="edit_save_changes_btn"):
-            if "edited_detail_df" in st.session_state:
-                edited_df = st.session_state["edited_detail_df"].copy()
-                recalculated_rows = []
-                for _, row_item in edited_df.iterrows():
-                    row_dict = row_item.to_dict()
-                    row_dict["Project Name"] = st.session_state.project_name
-                    row_dict["BOQ Article"] = st.session_state.boq_article
-                    row_dict = calculate_row(row_dict, df)
-                    recalculated_rows.append(row_dict)
-                st.session_state.rows = recalculated_rows
-                save_results(st.session_state.rows, st.session_state.project_name)
-
-            if "edited_supplier_df" in st.session_state and st.session_state.selected_supplier:
-                save_df = st.session_state["edited_supplier_df"].copy()
-                if not save_df.empty:
-                    save_df["Supplier"] = st.session_state.selected_supplier
-                save_supplier_data_by_name(st.session_state.selected_supplier, save_df)
-
-            st.success("Edited data saved")
-
-with main_tabs[3]:
     st.subheader("Save")
 
     save_project_name = st.text_input(
@@ -827,13 +779,13 @@ with main_tabs[3]:
         st.success(f"Project saved: {st.session_state.project_name}")
         st.rerun()
 
-with main_tabs[4]:
+with main_tabs[3]:
     st.subheader("Refresh")
 
     if st.button("Refresh", use_container_width=True, key="refresh_app_btn_unique"):
         st.rerun()
 
-with main_tabs[5]:
+with main_tabs[4]:
     st.subheader("Calculation")
 
     calc_action = st.selectbox(
