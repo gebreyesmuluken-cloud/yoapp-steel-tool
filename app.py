@@ -6,8 +6,8 @@ import math
 import re
 from pathlib import Path
 
-st.set_page_config(page_title="Steel Calculation App", layout="wide")
-st.title("Steel Calculation App")
+st.set_page_config(page_title="SEST", layout="wide")
+st.title("SEST")
 
 PROJECTS_DIR = Path("projects")
 PROJECTS_DIR.mkdir(exist_ok=True)
@@ -345,46 +345,6 @@ boq = st.text_input("BOQ Article", value=boq_default)
 if boq != st.session_state.loaded_boq:
     st.session_state.loaded_boq = boq
 
-st.subheader("Fab Setup")
-
-fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
-
-fc1, fc2, fc3 = st.columns(3)
-
-with fc1:
-    supply_name_input = st.text_input("Supply").strip()
-
-with fc2:
-    selected_profile_type = st.selectbox("Profile Type", profile_type_options)
-
-with fc3:
-    fabric_standard_length_input = st.number_input("Fab Length", min_value=0.0, step=0.5)
-
-if st.button("Add Fab"):
-    if supply_name_input == "":
-        st.warning("Please enter a Supply name.")
-    else:
-        new_row = pd.DataFrame([{
-            "Supply": supply_name_input,
-            "Profile Type": selected_profile_type,
-            "Fabric Standard Length": fabric_standard_length_input
-        }])
-
-        fabric_df = fabric_df[
-            ~(
-                (fabric_df["Supply"].astype(str).str.strip() == supply_name_input) &
-                (fabric_df["Profile Type"].astype(str).str.strip() == selected_profile_type)
-            )
-        ]
-
-        fabric_df = pd.concat([fabric_df, new_row], ignore_index=True)
-        save_fabric_standards(fabric_df, st.session_state.active_project or DEFAULT_PROJECT_NAME)
-        st.success("Fab data saved.")
-        fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
-
-if not fabric_df.empty:
-    st.dataframe(fabric_df, use_container_width=True, hide_index=True)
-
 st.subheader("Input Data")
 col3, col4, col5, col6, col7, col8 = st.columns(6)
 
@@ -522,6 +482,46 @@ if st.session_state.rows:
     })
 
     st.dataframe(profile_summary_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Fab Setup")
+
+    fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
+
+    fc1, fc2, fc3 = st.columns(3)
+
+    with fc1:
+        supply_name_input = st.text_input("Supply").strip()
+
+    with fc2:
+        selected_profile_type = st.selectbox("Profile Type", profile_type_options)
+
+    with fc3:
+        fabric_standard_length_input = st.number_input("Fab Length", min_value=0.0, step=0.5)
+
+    if st.button("Add Fab"):
+        if supply_name_input == "":
+            st.warning("Please enter a Supply name.")
+        else:
+            new_row = pd.DataFrame([{
+                "Supply": supply_name_input,
+                "Profile Type": selected_profile_type,
+                "Fabric Standard Length": fabric_standard_length_input
+            }])
+
+            fabric_df = fabric_df[
+                ~(
+                    (fabric_df["Supply"].astype(str).str.strip() == supply_name_input) &
+                    (fabric_df["Profile Type"].astype(str).str.strip() == selected_profile_type)
+                )
+            ]
+
+            fabric_df = pd.concat([fabric_df, new_row], ignore_index=True)
+            save_fabric_standards(fabric_df, st.session_state.active_project or DEFAULT_PROJECT_NAME)
+            st.success("Fab data saved.")
+            fabric_df = load_fabric_standards(st.session_state.active_project or DEFAULT_PROJECT_NAME)
+
+    if not fabric_df.empty:
+        st.dataframe(fabric_df, use_container_width=True, hide_index=True)
 
     st.subheader("Fab Waste")
 
