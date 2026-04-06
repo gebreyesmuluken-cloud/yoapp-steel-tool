@@ -55,6 +55,13 @@ def get_supplier_file(supplier_name):
     return SUPPLIERS_DIR / f"{safe_name(supplier_name)}.xlsx"
 
 
+def get_saved_project_names():
+    return sorted([
+        p.name.replace("_results.xlsx", "")
+        for p in PROJECTS_DIR.glob("*_results.xlsx")
+    ])
+
+
 def to_float(value, default=0.0):
     if pd.isna(value):
         return default
@@ -333,13 +340,12 @@ with main_tabs[0]:
                 st.session_state.rows = []
                 st.session_state.project_name = safe_project_name(new_project_name)
                 st.session_state.boq_article = ""
-                st.success(f"New project created: {st.session_state.project_name}")
+                save_full_project(st.session_state.project_name)
+                st.success(f"New project created and saved: {st.session_state.project_name}")
+                st.rerun()
 
     elif file_action == "Open Project":
-        existing_projects = sorted([
-            p.name.replace("_results.xlsx", "")
-            for p in PROJECTS_DIR.glob("*_results.xlsx")
-        ])
+        existing_projects = get_saved_project_names()
 
         selected_project = st.selectbox(
             "Select Project",
@@ -407,8 +413,33 @@ with main_tabs[1]:
     ])
 
     with model_tabs[0]:
-        st.text_input("Project Name Display", value=st.session_state.project_name, disabled=True, key="model_project_name_display_unique")
-        st.session_state.boq_article = st.text_input("BOQ Article Input", value=st.session_state.boq_article, key="model_boq_article_input_unique")
+        saved_projects = get_saved_project_names()
+        project_options = saved_projects if saved_projects else [st.session_state.project_name]
+
+        current_index = project_options.index(st.session_state.project_name) if st.session_state.project_name in project_options else 0
+
+        selected_model_project = st.selectbox(
+            "Project Name",
+            project_options,
+            index=current_index,
+            key="model_project_select_unique"
+        )
+
+        if selected_model_project != st.session_state.project_name:
+            st.session_state.project_name = selected_model_project
+            st.session_state.rows = load_saved_results(selected_model_project)
+
+            if st.session_state.rows:
+                st.session_state.boq_article = str(st.session_state.rows[0].get("BOQ Article", ""))
+            else:
+                st.session_state.boq_article = ""
+            st.rerun()
+
+        st.session_state.boq_article = st.text_input(
+            "BOQ Article",
+            value=st.session_state.boq_article,
+            key="model_boq_article_input_unique"
+        )
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -784,11 +815,17 @@ with main_tabs[2]:
 with main_tabs[3]:
     st.subheader("Save")
 
-    st.text_input("Save Project Display", value=st.session_state.project_name, disabled=True, key="save_project_display_unique")
+    save_project_name = st.text_input(
+        "Project Name",
+        value=st.session_state.project_name,
+        key="save_project_name_input_unique"
+    )
 
     if st.button("Save", use_container_width=True, key="save_project_btn_unique"):
-        save_full_project(st.session_state.project_name)
+        final_name = save_project_name.strip() if save_project_name.strip() else DEFAULT_PROJECT_NAME
+        save_full_project(final_name)
         st.success(f"Project saved: {st.session_state.project_name}")
+        st.rerun()
 
 with main_tabs[4]:
     st.subheader("Refresh")
