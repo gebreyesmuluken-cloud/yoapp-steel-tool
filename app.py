@@ -320,23 +320,7 @@ if "boq_article" not in st.session_state:
 if "selected_supplier" not in st.session_state:
     st.session_state.selected_supplier = ""
 
-top_row1, top_row2, top_row3 = st.columns([2, 1, 1])
-
-with top_row1:
-    quick_project_name = st.text_input("Active Project", value=st.session_state.project_name, key="quick_project_name")
-
-with top_row2:
-    st.write("")
-    if st.button("Quick Save", use_container_width=True):
-        save_full_project(quick_project_name)
-        st.success(f"Saved: {st.session_state.project_name}")
-
-with top_row3:
-    st.write("")
-    if st.button("Refresh", use_container_width=True):
-        st.rerun()
-
-main_tabs = st.tabs(["File", "Model", "Save", "Edit", "Calculation"])
+main_tabs = st.tabs(["File", "Model", "Edit", "Save", "Refresh", "Calculation"])
 
 with main_tabs[0]:
     st.subheader("File")
@@ -772,25 +756,6 @@ with main_tabs[1]:
             st.info("Open a supplier and add supplier data first.")
 
 with main_tabs[2]:
-    st.subheader("Save")
-
-    c1, c2 = st.columns([2, 1])
-
-    with c1:
-        save_name = st.text_input(
-            "Project Name",
-            value=st.session_state.project_name,
-            key="save_project_name_top"
-        )
-
-    with c2:
-        st.write("")
-        st.write("")
-        if st.button("Save Now"):
-            save_full_project(save_name)
-            st.success(f"Project saved: {st.session_state.project_name}")
-
-with main_tabs[3]:
     st.subheader("Edit")
 
     c1, c2, c3 = st.columns(3)
@@ -827,7 +792,22 @@ with main_tabs[3]:
 
             st.success("Edited data saved")
 
+with main_tabs[3]:
+    st.subheader("Save")
+
+    st.text_input("Project Name", value=st.session_state.project_name, disabled=True)
+
+    if st.button("Save", use_container_width=True):
+        save_full_project(st.session_state.project_name)
+        st.success(f"Project saved: {st.session_state.project_name}")
+
 with main_tabs[4]:
+    st.subheader("Refresh")
+
+    if st.button("Refresh", use_container_width=True):
+        st.rerun()
+
+with main_tabs[5]:
     st.subheader("Calculation")
 
     calc_action = st.selectbox(
