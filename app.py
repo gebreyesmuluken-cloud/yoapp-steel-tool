@@ -205,7 +205,8 @@ def calculate_row(row_data, profile_df):
 
     default_result = {
         "Split Pieces": 1,
-        "kg/m": 0.0,
+        "Split Length": 0.0,
+        "Split Quantity": 0.0,
         "Total Treatment Area": 0.0,
         "Net Weight": 0.0,
         "Weight Incl. Waste": 0.0,
@@ -225,33 +226,32 @@ def calculate_row(row_data, profile_df):
 
     profile_row = profile_match.iloc[0]
 
-    original_length = to_float(row_data.get("Original Length", row_data.get("Length", 0)))
-    original_number = to_float(row_data.get("Input Number", row_data.get("Number", 0)))
+    input_length = to_float(row_data.get("Length", 0))
+    input_quantity = to_float(row_data.get("Quantity", 0))
     price_per_ton = to_float(row_data.get("Price/t", 0))
 
-    calc_length, calc_number, split_pieces = split_length_and_quantity(
-        original_length, original_number, MAX_PIECE_LENGTH
+    calc_length, calc_quantity, split_pieces = split_length_and_quantity(
+        input_length, input_quantity, MAX_PIECE_LENGTH
     )
 
     kgm = to_float(profile_row.get("kgm", 0))
     m2_per_m = to_float(profile_row.get("m2_per_m", 0))
     zbsl = get_zbsl(profile_row, calc_length)
 
-    net_weight = kgm * calc_length * calc_number
+    net_weight = kgm * calc_length * calc_quantity
     factor = get_weight_factor(profile_name)
     weight_incl_waste = net_weight * factor
 
-    total_treatment_area = m2_per_m * calc_length * calc_number
-    total_zbsl = zbsl * calc_number
+    total_treatment_area = m2_per_m * calc_length * calc_quantity
+    total_zbsl = zbsl * calc_quantity
     total_price = (weight_incl_waste / 1000) * price_per_ton
 
-    row_data["Original Length"] = round(original_length, 2)
-    row_data["Input Number"] = int(original_number) if float(original_number).is_integer() else round(original_number, 2)
-    row_data["Length"] = round(calc_length, 2)
-    row_data["Number"] = int(calc_number) if float(calc_number).is_integer() else round(calc_number, 2)
+    row_data["Length"] = round(input_length, 2)
+    row_data["Quantity"] = int(input_quantity) if float(input_quantity).is_integer() else round(input_quantity, 2)
     row_data["Split Pieces"] = int(split_pieces)
+    row_data["Split Length"] = round(calc_length, 2)
+    row_data["Split Quantity"] = int(calc_quantity) if float(calc_quantity).is_integer() else round(calc_quantity, 2)
     row_data["Price/t"] = round(price_per_ton, 2)
-    row_data["kg/m"] = round(kgm, 2)
     row_data["Total Treatment Area"] = round(total_treatment_area, 2)
     row_data["Net Weight"] = round(net_weight, 2)
     row_data["Weight Incl. Waste"] = round(weight_incl_waste, 2)
@@ -464,11 +464,11 @@ with main_tabs[1]:
 
         c4, c5, c6 = st.columns(3)
         with c4:
-            input_length = st.number_input("Original Length (m)", min_value=0.0, step=0.1, format="%.2f", key="model_original_length_input")
+            input_length = st.number_input("Length (m)", min_value=0.0, step=0.1, format="%.2f", key="model_length_input")
         with c5:
-            input_quantity = st.number_input("Input Quantity", min_value=1, step=1, key="model_input_quantity_input")
+            input_quantity = st.number_input("Quantity", min_value=1, step=1, key="model_quantity_input")
         with c6:
-            input_price_per_ton = st.number_input("Price per ton", min_value=0.0, step=10.0, format="%.2f", key="model_price_per_ton_input")
+            input_price_per_ton = st.number_input("Price/t", min_value=0.0, step=10.0, format="%.2f", key="model_price_per_ton_input")
 
         current_data = {
             "Project Name": st.session_state.project_name,
@@ -476,13 +476,12 @@ with main_tabs[1]:
             "Floor Level": floor_level,
             "Sub Article": sub_article,
             "Profile": profile,
-            "Original Length": input_length,
-            "Input Number": input_quantity,
             "Length": input_length,
-            "Number": input_quantity,
+            "Quantity": input_quantity,
             "Price/t": input_price_per_ton,
             "Split Pieces": 1,
-            "kg/m": 0.0,
+            "Split Length": 0.0,
+            "Split Quantity": 0.0,
             "Total Treatment Area": 0.0,
             "Net Weight": 0.0,
             "Weight Incl. Waste": 0.0,
@@ -494,26 +493,18 @@ with main_tabs[1]:
 
         r1, r2, r3 = st.columns(3)
         with r1:
-            st.number_input("kg per meter", value=to_float(current_data["kg/m"]), disabled=True, key="model_calc_kgm_display")
+            st.number_input("Split Pieces", value=int(to_float(current_data["Split Pieces"], 1)), disabled=True, key="model_calc_split_pieces_display")
         with r2:
             st.number_input("Net Weight", value=to_float(current_data["Net Weight"]), disabled=True, key="model_calc_net_weight_display")
         with r3:
-            st.number_input("Weight Incl Waste", value=to_float(current_data["Weight Incl. Waste"]), disabled=True, key="model_calc_weight_waste_display")
+            st.number_input("Weight Incl. Waste", value=to_float(current_data["Weight Incl. Waste"]), disabled=True, key="model_calc_weight_waste_display")
 
         r4, r5, r6 = st.columns(3)
         with r4:
-            st.number_input("Split Pieces", value=int(to_float(current_data["Split Pieces"], 1)), disabled=True, key="model_calc_split_pieces_display")
-        with r5:
-            st.number_input("Calculated Length", value=to_float(current_data["Length"]), disabled=True, key="model_calc_length_display")
-        with r6:
-            st.number_input("Calculated Number", value=to_float(current_data["Number"]), disabled=True, key="model_calc_number_display")
-
-        r7, r8, r9 = st.columns(3)
-        with r7:
             st.number_input("Treatment Area", value=to_float(current_data["Total Treatment Area"]), disabled=True, key="model_calc_treatment_area_display")
-        with r8:
+        with r5:
             st.number_input("ZBSL", value=to_float(current_data["Total ZBSL"]), disabled=True, key="model_calc_zbsl_display")
-        with r9:
+        with r6:
             st.number_input("Levering Price", value=to_float(current_data["Total Levering Price"]), disabled=True, key="model_calc_price_display")
 
         b1, b2 = st.columns(2)
@@ -606,7 +597,8 @@ with main_tabs[1]:
 
         expected_columns = [
             "Project Name", "BOQ Article", "Floor Level", "Sub Article", "Profile",
-            "Original Length", "Input Number", "Length", "Number", "Price/t", "Split Pieces", "kg/m",
+            "Length", "Quantity", "Price/t", "Split Pieces",
+            "Split Length", "Split Quantity",
             "Total Treatment Area", "Net Weight", "Weight Incl. Waste",
             "Total ZBSL", "Total Levering Price"
         ]
@@ -620,19 +612,24 @@ with main_tabs[1]:
         with model_tabs[2]:
             st.subheader("Detail Results")
 
+            detail_display_df = detail_df[[
+                "Project Name", "BOQ Article", "Floor Level", "Sub Article", "Profile",
+                "Length", "Quantity", "Price/t", "Split Pieces",
+                "Total Treatment Area", "Net Weight", "Weight Incl. Waste",
+                "Total ZBSL", "Total Levering Price"
+            ]]
+
             edited_df = st.data_editor(
-                detail_df,
+                detail_display_df,
                 use_container_width=True,
                 hide_index=True,
                 num_rows="dynamic",
                 key="detail_results_editor",
                 column_config={
-                    "Original Length": st.column_config.NumberColumn("Original Length", step=0.1, format="%.2f"),
-                    "Input Number": st.column_config.NumberColumn("Input Number", step=1),
-                    "Length": st.column_config.NumberColumn("Calculated Length", disabled=True, format="%.2f"),
-                    "Number": st.column_config.NumberColumn("Calculated Number", disabled=True),
+                    "Length": st.column_config.NumberColumn("Length", step=0.1, format="%.2f"),
+                    "Quantity": st.column_config.NumberColumn("Quantity", step=1),
+                    "Price/t": st.column_config.NumberColumn("Price/t", step=1.0, format="%.2f"),
                     "Split Pieces": st.column_config.NumberColumn("Split Pieces", disabled=True),
-                    "kg/m": st.column_config.NumberColumn("kg/m", disabled=True, format="%.2f"),
                     "Total Treatment Area": st.column_config.NumberColumn("Total Treatment Area", disabled=True, format="%.2f"),
                     "Net Weight": st.column_config.NumberColumn("Net Weight", disabled=True, format="%.2f"),
                     "Weight Incl. Waste": st.column_config.NumberColumn("Weight Incl. Waste", disabled=True, format="%.2f"),
@@ -655,21 +652,26 @@ with main_tabs[1]:
         if not recalculated_df.empty:
             summary_df = recalculated_df.groupby(
                 ["Floor Level", "Sub Article"], as_index=False
-            )[["Input Number", "Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
+            )[["Quantity", "Split Quantity", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
+
+            summary_df = summary_df.rename(columns={
+                "Quantity": "Input Quantity",
+                "Split Quantity": "Calculated Quantity"
+            })
 
             profile_summary_df = recalculated_df.groupby("Profile", as_index=False).agg({
-                "Original Length": "sum",
                 "Length": "sum",
-                "Input Number": "sum",
-                "Number": "sum",
+                "Split Length": "sum",
+                "Quantity": "sum",
+                "Split Quantity": "sum",
                 "Weight Incl. Waste": "sum"
             })
 
             profile_summary_df = profile_summary_df.rename(columns={
-                "Original Length": "Total Original Length",
-                "Length": "Total Calculated Length",
-                "Input Number": "Total Input Number",
-                "Number": "Total Calculated Number",
+                "Length": "Total Input Length",
+                "Split Length": "Total Calculated Length",
+                "Quantity": "Total Input Quantity",
+                "Split Quantity": "Total Calculated Quantity",
                 "Weight Incl. Waste": "Total Weight"
             })
 
@@ -693,13 +695,6 @@ with main_tabs[1]:
                     axis=1
                 )
 
-                waste_df["kg/m"] = waste_df["Profile"].apply(
-                    lambda p: to_float(
-                        df[df["Profile"].astype(str).str.strip() == str(p).strip()].iloc[0]["kgm"],
-                        0.0
-                    ) if not df[df["Profile"].astype(str).str.strip() == str(p).strip()].empty else 0.0
-                )
-
                 waste_df["Waste Length"] = waste_df.apply(
                     lambda row: round(
                         row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Calculated Length"], 2
@@ -707,8 +702,9 @@ with main_tabs[1]:
                     axis=1
                 )
 
+                kgm_map = df.set_index("Profile")["kgm"].to_dict()
                 waste_df["Waste Weight"] = waste_df.apply(
-                    lambda row: round(row["Waste Length"] * row["kg/m"], 2),
+                    lambda row: round(row["Waste Length"] * to_float(kgm_map.get(row["Profile"], 0)), 2),
                     axis=1
                 )
 
@@ -802,19 +798,24 @@ if st.session_state.rows:
 
     export_summary_df = export_detail_df.groupby(
         ["Floor Level", "Sub Article"], as_index=False
-    )[["Input Number", "Number", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
+    )[["Quantity", "Split Quantity", "Total Treatment Area", "Net Weight", "Weight Incl. Waste", "Total ZBSL", "Total Levering Price"]].sum()
+
+    export_summary_df = export_summary_df.rename(columns={
+        "Quantity": "Input Quantity",
+        "Split Quantity": "Calculated Quantity"
+    })
 
     export_profile_sum_df = export_detail_df.groupby("Profile", as_index=False).agg({
-        "Original Length": "sum",
         "Length": "sum",
-        "Input Number": "sum",
-        "Number": "sum",
+        "Split Length": "sum",
+        "Quantity": "sum",
+        "Split Quantity": "sum",
         "Weight Incl. Waste": "sum"
     }).rename(columns={
-        "Original Length": "Total Original Length",
-        "Length": "Total Calculated Length",
-        "Input Number": "Total Input Number",
-        "Number": "Total Calculated Number",
+        "Length": "Total Input Length",
+        "Split Length": "Total Calculated Length",
+        "Quantity": "Total Input Quantity",
+        "Split Quantity": "Total Calculated Quantity",
         "Weight Incl. Waste": "Total Weight"
     })
 
@@ -841,13 +842,6 @@ if st.session_state.rows:
             axis=1
         )
 
-        export_waste_df["kg/m"] = export_waste_df["Profile"].apply(
-            lambda p: to_float(
-                df[df["Profile"].astype(str).str.strip() == str(p).strip()].iloc[0]["kgm"],
-                0.0
-            ) if not df[df["Profile"].astype(str).str.strip() == str(p).strip()].empty else 0.0
-        )
-
         export_waste_df["Waste Length"] = export_waste_df.apply(
             lambda row: round(
                 row["Supplier Qty"] * row["Fabric Standard Length"] - row["Total Calculated Length"], 2
@@ -855,8 +849,9 @@ if st.session_state.rows:
             axis=1
         )
 
+        kgm_map = df.set_index("Profile")["kgm"].to_dict()
         export_waste_df["Waste Weight"] = export_waste_df.apply(
-            lambda row: round(row["Waste Length"] * row["kg/m"], 2),
+            lambda row: round(row["Waste Length"] * to_float(kgm_map.get(row["Profile"], 0)), 2),
             axis=1
         )
 
