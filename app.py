@@ -247,7 +247,7 @@ def calculate_row(row_data, profile_df):
     total_price = (weight_incl_waste / 1000) * price_per_ton
 
     row_data["Length"] = round(input_length, 2)
-    row_data["Quantity"] = int(input_quantity) if float(input_quantity).is_integer() else round(input_quantity, 2)
+    row_data["Quantity"] = int(calc_quantity / split_pieces) if split_pieces > 0 and float(calc_quantity / split_pieces).is_integer() else round(input_quantity, 2)
     row_data["Split Pieces"] = int(split_pieces)
     row_data["Split Length"] = round(calc_length, 2)
     row_data["Split Quantity"] = int(calc_quantity) if float(calc_quantity).is_integer() else round(calc_quantity, 2)
